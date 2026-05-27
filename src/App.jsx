@@ -6,28 +6,31 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Data State (Starts empty, gets filled by Flask)
+  // NEW: State to track which card is being hovered over
+  const [hoveredCard, setHoveredCard] = useState(null);
+
+  // Data State
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
 
-  // Fetch data from Flask API when the component loads
   useEffect(() => {
     const fetchNHSData = async () => {
       try {
-        // Fetch all three endpoints simultaneously
+        const API_BASE_URL = import.meta.env.DEV
+          ? 'http://127.0.0.1:5000'
+          : 'https://YOUR_BACKEND_URL.onrender.com';
+
         const [patientRes, apptRes, presRes] = await Promise.all([
-          fetch('http://127.0.0.1:5000/api/patient'),
-          fetch('http://127.0.0.1:5000/api/appointments'),
-          fetch('http://127.0.0.1:5000/api/prescriptions')
+          fetch(`${API_BASE_URL}/api/patient`),
+          fetch(`${API_BASE_URL}/api/appointments`),
+          fetch(`${API_BASE_URL}/api/prescriptions`)
         ]);
 
-        // Convert responses to JSON
         const patientData = await patientRes.json();
         const apptData = await apptRes.json();
         const presData = await presRes.json();
 
-        // Update React state with the new database data
         setPatient(patientData);
         setAppointments(apptData);
         setPrescriptions(presData);
@@ -50,7 +53,6 @@ export default function App() {
     }, 2000);
   };
 
-  // Show a loading screen while waiting for the Flask API
   if (isLoading) {
     return (
       <div style={{ ...styles.appContainer, justifyContent: 'center', alignItems: 'center' }}>
@@ -58,6 +60,15 @@ export default function App() {
       </div>
     );
   }
+
+  // NEW: Dynamic styling function to change the border based on hover state
+  const getCardStyle = (cardName) => ({
+    ...styles.card,
+    borderTop: hoveredCard === cardName ? '5px solid #007F3B' : '5px solid transparent',
+    // Adds a slight lift effect when hovered to make it feel tactile
+    transform: hoveredCard === cardName ? 'translateY(-2px)' : 'translateY(0)',
+    boxShadow: hoveredCard === cardName ? '0 6px 12px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.05)'
+  });
 
   return (
     <div style={styles.appContainer}>
@@ -75,7 +86,6 @@ export default function App() {
           </button>
         )}
 
-        {/* --- VIEW 1: DASHBOARD --- */}
         {currentView === 'dashboard' && (
           <div>
             <div style={styles.welcomeBanner}>
@@ -84,26 +94,44 @@ export default function App() {
             </div>
 
             <div style={styles.gridContainer}>
+              {/* Scan Button */}
               <button
-                style={{ ...styles.card, ...styles.scanCard }}
+                style={getCardStyle('scan')}
+                onMouseEnter={() => setHoveredCard('scan')}
+                onMouseLeave={() => setHoveredCard(null)}
                 onClick={handleScanClick}
                 disabled={isScanning}
               >
                 <span style={styles.cardIcon}>📷</span>
-                <h3>{isScanning ? "Scanning Document..." : "Scan Documents"}</h3>
-                <p>Upload letters, test results, or IDs directly to your record.</p>
+                <span style={styles.iconLabel}>Scan Document</span>
+                <h3 style={styles.cardHeading}>{isScanning ? "Scanning Document..." : "Scan Documents"}</h3>
+                <p style={styles.cardText}>Upload letters, test results, or IDs directly to your record.</p>
               </button>
 
-              <button style={styles.card} onClick={() => setCurrentView('appointments')}>
+              {/* View Appointments Button */}
+              <button
+                style={getCardStyle('appointments')}
+                onMouseEnter={() => setHoveredCard('appointments')}
+                onMouseLeave={() => setHoveredCard(null)}
+                onClick={() => setCurrentView('appointments')}
+              >
                 <span style={styles.cardIcon}>📅</span>
-                <h3>View Appointments</h3>
-                <p>Check timings, locations, and manage upcoming medical visits.</p>
+                <span style={styles.iconLabel}>View Appointments</span>
+                <h3 style={styles.cardHeading}>View Appointments</h3>
+                <p style={styles.cardText}>Check timings, locations, and manage upcoming medical visits.</p>
               </button>
 
-              <button style={styles.card} onClick={() => setCurrentView('prescriptions')}>
+              {/* View Prescriptions Button */}
+              <button
+                style={getCardStyle('prescriptions')}
+                onMouseEnter={() => setHoveredCard('prescriptions')}
+                onMouseLeave={() => setHoveredCard(null)}
+                onClick={() => setCurrentView('prescriptions')}
+              >
                 <span style={styles.cardIcon}>💊</span>
-                <h3>View Prescriptions</h3>
-                <p>Track your current medications and request repeat supplies.</p>
+                <span style={styles.iconLabel}>View Prescriptions</span>
+                <h3 style={styles.cardHeading}>View Prescriptions</h3>
+                <p style={styles.cardText}>Track your current medications and request repeat supplies.</p>
               </button>
             </div>
           </div>
@@ -158,13 +186,12 @@ export default function App() {
       </main>
 
       <footer style={styles.footer}>
-        <p>© 2026 NHS Digital Prototype. Fetching live from Flask API.</p>
+        <p>DRP15 WebApp Prototype. Fetching live from Flask API.</p>
       </footer>
     </div>
   );
 }
 
-// Keeping the exact same styling object as before
 const styles = {
   appContainer: { fontFamily: '"Helvetica Neue", Arial, sans-serif', color: '#212B32', backgroundColor: '#F0F4F5', minHeight: '100vh', display: 'flex', flexDirection: 'column' },
   header: { backgroundColor: '#005EB8', color: '#FFFFFF', padding: '15px 20px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' },
@@ -174,9 +201,27 @@ const styles = {
   mainContent: { maxWidth: '1000px', width: '100%', margin: '30px auto', padding: '0 20px', flex: 1, boxSizing: 'border-box' },
   welcomeBanner: { backgroundColor: '#FFFFFF', padding: '20px', borderRadius: '4px', marginBottom: '25px', borderBottom: '4px solid #005EB8', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
   gridContainer: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' },
-  card: { backgroundColor: '#FFFFFF', border: '1px solid #E8EDF2', borderRadius: '4px', padding: '25px', textAlign: 'left', cursor: 'pointer', transition: 'transform 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' },
-  scanCard: { borderLeft: '5px solid #007F3B' },
-  cardIcon: { fontSize: '32px', display: 'block', marginBottom: '10px' },
+  card: {
+    backgroundColor: '#FFFFFF',
+    // Notice the borders are explicitly set so the 5px transparent top border doesn't overwrite the side borders
+    borderBottom: '1px solid #E8EDF2',
+    borderLeft: '1px solid #E8EDF2',
+    borderRight: '1px solid #E8EDF2',
+    borderRadius: '8px',
+    padding: '30px 20px',
+    cursor: 'pointer',
+    // Added 'all' to transition to make the lift and shadow animate smoothly too
+    transition: 'all 0.2s ease-in-out',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center'
+  },
+  cardIcon: { fontSize: '44px', display: 'block', marginBottom: '4px' },
+  iconLabel: { fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#005EB8', fontWeight: 'bold', marginBottom: '16px' },
+  cardHeading: { margin: '0 0 8px 0', fontSize: '20px', color: '#212B32' },
+  cardText: { margin: 0, fontSize: '14px', color: '#4C5862', lineHeight: '1.4' },
   backButton: { background: 'none', border: 'none', color: '#005EB8', cursor: 'pointer', fontSize: '16px', marginBottom: '20px', padding: 0, textDecoration: 'underline' },
   sectionTitle: { color: '#005EB8', borderBottom: '2px solid #D8DDE0', paddingBottom: '10px', marginBottom: '20px' },
   listContainer: { display: 'flex', flexDirection: 'column', gap: '15px' },
