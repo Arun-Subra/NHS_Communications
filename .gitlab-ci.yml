@@ -5,7 +5,7 @@ deploy_to_vm:
   stage: deploy
   image: alpine:latest
   only:
-    - main
+    - master
   before_script:
     - apk add --update openssh rsync
     - eval $(ssh-agent -s)
