@@ -6,15 +6,12 @@ deploy_to_vm:
   image: alpine:latest
   only:
     - main
-before_script:
+  before_script:
     - apk add --update openssh rsync
     - eval $(ssh-agent -s)
-    # This line decodes the Base64 key on the fly and adds it to the agent
     - echo "$SSH_PRIVATE_KEY" | base64 -d | ssh-add -
     - mkdir -p ~/.ssh
     - ssh-keyscan $SERVER_IP >> ~/.ssh/known_hosts
   script:
-    # 1. Sync all project files straight into the deployment folder
     - rsync -avz --exclude='.git' ./ $SSH_USER@$SERVER_IP:/opt/drp-touchpoint/
-    # 2. Log in and restart the Docker containers
     - ssh $SSH_USER@$SERVER_IP "cd /opt/drp-touchpoint && docker-compose down && docker-compose up -d --build"
