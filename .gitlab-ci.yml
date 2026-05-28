@@ -6,6 +6,13 @@ deploy_to_vm:
   image: alpine:latest
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
+  after_script:
+    - apk add --update openssh 2>/dev/null || true
+    - eval $(ssh-agent -s) 2>/dev/null || true
+    - echo "$SSH_PRIVATE_KEY" | base64 -d | ssh-add - 2>/dev/null || true
+    - mkdir -p ~/.ssh && ssh-keyscan $SERVER_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+    - ssh -o ConnectTimeout=10 $SSH_USER@$SERVER_IP "pkill -f 'docker build' || true; pkill -f 'docker-compose' || true" || true
+
   before_script:
     - apk add --update openssh rsync
     - eval $(ssh-agent -s)
