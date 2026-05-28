@@ -17,7 +17,10 @@ DEFAULT_SCAN_TYPE = "appointment_letter"
 app = Flask(__name__, static_folder="../dist", static_url_path="/")
 CORS(app, origins=["http://localhost:3000", "http://localhost:5173"])
 
-supabase = create_client(os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_KEY"])
+_supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
+if "/rest/" in _supabase_url:
+    _supabase_url = _supabase_url[:_supabase_url.index("/rest/")]
+supabase = create_client(_supabase_url, os.environ["SUPABASE_KEY"])
 
 
 def _insert_record(table, payload):
