@@ -1,6 +1,5 @@
-fastapi
-uvicorn
 flask
 flask-cors
-supabase
 python-dotenv
+supabase
+gunicorn

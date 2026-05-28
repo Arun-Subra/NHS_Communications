@@ -1,12 +1,14 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+# Added send_from_directory to serve the React files
+from flask import Flask, jsonify, request, send_from_directory 
 from flask_cors import CORS
 from supabase import create_client
 
 load_dotenv()
 
-app = Flask(__name__)
+# Updated: Tell Flask where to look for the compiled React frontend
+app = Flask(__name__, static_folder="dist", static_url_path="/")
 CORS(app)
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
@@ -59,5 +61,18 @@ def log_event():
     }).execute()
     return jsonify({"status": "ok"})
 
+# --- NEW: The Catch-All Route for the React Frontend ---
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    # If the user asks for a specific file (like CSS or JS) and it exists, serve it
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    # Otherwise, give them the React index.html and let React handle the routing
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 if __name__ == '__main__':
+    # Tsuru will actually ignore this block and use Gunicorn via the Procfile, 
+    # but we can leave this here so you can still run it locally!
     app.run(debug=True, port=5000)
