@@ -3,8 +3,9 @@ services:
     name: drp-touchpoint
     env: python
     buildCommand: |
-      npm install && npm run build && pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+      cd src && npm install && npm run build && cd ..
+      pip install -r requirements.txt
+    startCommand: gunicorn backend.app:app --bind 0.0.0.0:$PORT
     plan: free
     envVars:
       - key: SUPABASE_URL
