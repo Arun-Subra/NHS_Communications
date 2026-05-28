@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const API_BASE_URL = import.meta.env.DEV ? 'http://127.0.0.1:5000' : '';
+const API_BASE_URL = import.meta.env.DEV ? 'http://127.0.0.1:8000' : '';
 
 const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
 - blood test
@@ -9,6 +9,12 @@ Taking place on
 - Saturday 13th December 2025
 At time
 - 12:05pm.`;
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API_BASE_URL}${path}`, options);
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
+}
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -23,15 +29,10 @@ export default function App() {
   useEffect(() => {
     const fetchNHSData = async () => {
       try {
-        const [patientRes, apptRes, presRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/patient`),
-          fetch(`${API_BASE_URL}/api/appointments`),
-          fetch(`${API_BASE_URL}/api/prescriptions`)
-        ]);
-
-        setPatient(await patientRes.json());
-        setAppointments(await apptRes.json());
-        setPrescriptions(await presRes.json());
+        const data = await apiFetch('/api/me');
+        setPatient(data.patient_info);
+        setAppointments(data.appointments);
+        setPrescriptions(data.prescriptions);
       } catch (error) {
         console.error("Error connecting to Flask API:", error);
         alert("Failed to fetch data. Is your Flask server running?");
@@ -44,7 +45,7 @@ export default function App() {
   }, []);
 
   const logEvent = (eventType, metadata = null) =>
-    fetch(`${API_BASE_URL}/api/event`, {
+    apiFetch('/api/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event_type: eventType, metadata })
@@ -53,7 +54,7 @@ export default function App() {
   const handleScanClick = async () => {
     setIsScanning(true);
     try {
-      await fetch(`${API_BASE_URL}/api/scan`, {
+      await apiFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
