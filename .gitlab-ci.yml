@@ -12,6 +12,10 @@ deploy_to_vm:
     - echo "$SSH_PRIVATE_KEY" | base64 -d | ssh-add -
     - mkdir -p ~/.ssh
     - ssh-keyscan $SERVER_IP >> ~/.ssh/known_hosts
+    - echo "Host $SERVER_IP" >> ~/.ssh/config
+    - echo "  ConnectTimeout 30" >> ~/.ssh/config
+    - echo "  ServerAliveInterval 10" >> ~/.ssh/config
+    - echo "  ServerAliveCountMax 3" >> ~/.ssh/config
   script:
     - ssh $SSH_USER@$SERVER_IP "pkill -f 'docker-compose' || true; pkill -f 'docker build' || true; cd /opt/drp-touchpoint && docker-compose down --remove-orphans --timeout 10 || true"
     - rsync -avz --exclude='.git' --exclude='node_modules' --exclude='__pycache__' ./ $SSH_USER@$SERVER_IP:/opt/drp-touchpoint/
