@@ -50,6 +50,14 @@ const s = {
 export default function PhotoTab({ patient, apiFetch }) {
   const [status, setStatus] = useState('idle');
 
+  if (!patient) {
+    return (
+      <div style={s.container}>
+        <p style={s.hint}>Not connected to NHS database</p>
+      </div>
+    );
+  }
+
   const handleShutter = async () => {
     if (status === 'sending') return;
     setStatus('sending');

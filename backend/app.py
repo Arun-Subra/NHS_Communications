@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -25,12 +26,16 @@ def _insert_record(table, payload):
 
 @app.route('/api/me', methods=['GET'])
 def get_me():
-    patients = supabase.table(TABLE_PATIENTS).select("*").limit(1).execute().data
-    if not patients:
-        return jsonify({"error": "No patient found"}), 404
-    nhs = patients[0]["nhs_number"]
-    appointments = supabase.table(TABLE_APPOINTMENTS).select("*").eq("nhs_number", nhs).execute().data
-    prescriptions = supabase.table(TABLE_PRESCRIPTIONS).select("*").eq("nhs_number", nhs).execute().data
+    try:
+        patients = supabase.table(TABLE_PATIENTS).select("*").limit(1).execute().data
+        if not patients:
+            return jsonify({"error": "No patient found"}), 404
+        nhs = patients[0]["nhs_number"]
+        appointments = supabase.table(TABLE_APPOINTMENTS).select("*").eq("nhs_number", nhs).execute().data
+        prescriptions = supabase.table(TABLE_PRESCRIPTIONS).select("*").eq("nhs_number", nhs).execute().data
+    except Exception as e:
+        print(f"Supabase error in /api/me: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
     for p in prescriptions:
         p["repeatsLeft"] = p.pop("repeats_left", 0)
     return jsonify({
