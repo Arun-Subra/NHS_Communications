@@ -24,7 +24,7 @@ deploy_to_vm:
     - echo "  ServerAliveInterval 10" >> ~/.ssh/config
     - echo "  ServerAliveCountMax 3" >> ~/.ssh/config
   script:
-    - ssh $SSH_USER@$SERVER_IP "pkill -f 'docker-compose' || true; pkill -f 'docker build' || true; cd /opt/drp-touchpoint && docker-compose down --remove-orphans --timeout 10 || true"
+    - ssh $SSH_USER@$SERVER_IP "pkill -f 'docker-compose' || true; pkill -f 'docker build' || true" || true
     - rsync -avz --exclude='.git' --exclude='node_modules' --exclude='__pycache__' ./ $SSH_USER@$SERVER_IP:/opt/drp-touchpoint/
     - ssh $SSH_USER@$SERVER_IP "printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\n' '$SUPABASE_URL' '$SUPABASE_KEY' > /opt/drp-touchpoint/.env"
     - ssh $SSH_USER@$SERVER_IP "cd /opt/drp-touchpoint && docker-compose up -d --build"
