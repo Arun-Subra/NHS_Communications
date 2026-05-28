@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const API_BASE_URL = import.meta.env.DEV
-  ? 'http://127.0.0.1:5000'
-  : 'https://YOUR_BACKEND_URL.onrender.com';
+const API_BASE_URL = import.meta.env.DEV ? 'http://127.0.0.1:5000' : '';
 
 const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
 - blood test
