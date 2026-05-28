@@ -72,25 +72,6 @@ const s = {
     boxShadow: '0 0 40px rgba(0,0,0,0.18)',
     position: 'relative',
   },
-  header: {
-    backgroundColor: '#0066CC',
-    color: '#FFFFFF',
-    padding: '14px 16px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    flexShrink: 0,
-  },
-  nhsLogo: {
-    backgroundColor: '#FFFFFF',
-    color: '#0066CC',
-    fontWeight: '700',
-    fontSize: '18px',
-    padding: '2px 8px',
-    borderRadius: '2px',
-    letterSpacing: '0.5px',
-  },
-  headerTitle: { fontSize: '18px', margin: 0, fontWeight: '400', color: '#FFFFFF' },
   mainContent: {
     flex: 1,
     display: 'flex',
@@ -180,11 +161,6 @@ export default function App() {
 
   return (
     <div style={s.shell}>
-      <header style={s.header}>
-        <div style={s.nhsLogo}>NHS</div>
-        <h1 style={s.headerTitle}>MyHealth</h1>
-      </header>
-
       <main style={s.mainContent}>
         {isLoading
           ? <p style={s.loading}>Connecting to NHS Database…</p>
