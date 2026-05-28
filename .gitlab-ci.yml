@@ -18,4 +18,4 @@ deploy_to_vm:
     - ssh $SSH_USER@$SERVER_IP "printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\n' '$SUPABASE_URL' '$SUPABASE_KEY' > /opt/drp-touchpoint/.env"
     - ssh $SSH_USER@$SERVER_IP "cd /opt/drp-touchpoint && docker-compose up -d --build"
     - sleep 10
-    - ssh $SSH_USER@$SERVER_IP "curl -sf http://localhost:3000/api/me || (docker logs drp-touchpoint_backend_1 --tail 20 && exit 1)"
+    - ssh $SSH_USER@$SERVER_IP "curl -sf http://localhost:3000/api/health || (docker logs drp-touchpoint_backend_1 --tail 20 && exit 1)"

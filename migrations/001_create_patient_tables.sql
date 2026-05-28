@@ -31,6 +31,23 @@ create table public.prescriptions (
   status text not null
 ) tablespace pg_default;
 
+create table public.document_scans (
+  id uuid not null default gen_random_uuid(),
+  created_at timestamp with time zone not null default now(),
+  nhs_number text not null references public.patients(nhs_number),
+  raw_text text not null,
+  scan_type text not null default 'appointment_letter',
+  constraint document_scans_pkey primary key (id)
+) tablespace pg_default;
+
+create table public.button_events (
+  id uuid not null default gen_random_uuid(),
+  created_at timestamp with time zone not null default now(),
+  event_type text not null,
+  metadata jsonb,
+  constraint button_events_pkey primary key (id)
+) tablespace pg_default;
+
 -- Seed data matching the previous mock DATABASE
 insert into public.patients (name, nhs_number) values ('Alex', '485 772 2910');
 

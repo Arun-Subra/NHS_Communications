@@ -24,6 +24,11 @@ def _insert_record(table, payload):
     supabase.table(table).insert(payload).execute()
 
 
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"})
+
+
 @app.route('/api/me', methods=['GET'])
 def get_me():
     try:
