@@ -1,15 +1,23 @@
 import { useEffect, useState } from 'react';
 
+const API_BASE_URL = import.meta.env.DEV
+  ? 'http://127.0.0.1:5000'
+  : 'https://YOUR_BACKEND_URL.onrender.com';
+
+const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
+- blood test
+Taking place on
+- 13/12/2005
+- Saturday 13th December 2025
+At time
+- 12:05pm.`;
+
 export default function App() {
-  // Navigation & UI State
   const [currentView, setCurrentView] = useState('dashboard');
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  // NEW: State to track which card is being hovered over
   const [hoveredCard, setHoveredCard] = useState(null);
 
-  // Data State
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
@@ -17,23 +25,15 @@ export default function App() {
   useEffect(() => {
     const fetchNHSData = async () => {
       try {
-        const API_BASE_URL = import.meta.env.DEV
-          ? 'http://127.0.0.1:5000'
-          : 'https://YOUR_BACKEND_URL.onrender.com';
-
         const [patientRes, apptRes, presRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/patient`),
           fetch(`${API_BASE_URL}/api/appointments`),
           fetch(`${API_BASE_URL}/api/prescriptions`)
         ]);
 
-        const patientData = await patientRes.json();
-        const apptData = await apptRes.json();
-        const presData = await presRes.json();
-
-        setPatient(patientData);
-        setAppointments(apptData);
-        setPrescriptions(presData);
+        setPatient(await patientRes.json());
+        setAppointments(await apptRes.json());
+        setPrescriptions(await presRes.json());
       } catch (error) {
         console.error("Error connecting to Flask API:", error);
         alert("Failed to fetch data. Is your Flask server running?");
@@ -45,12 +45,52 @@ export default function App() {
     fetchNHSData();
   }, []);
 
-  const handleScanClick = () => {
+  const logEvent = (eventType, metadata = null) =>
+    fetch(`${API_BASE_URL}/api/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type: eventType, metadata })
+    }).catch(err => console.error('Event log failed:', err));
+
+  const handleScanClick = async () => {
     setIsScanning(true);
-    setTimeout(() => {
-      alert("Document scanned successfully! (Mock data uploaded to patient file)");
+    try {
+      await fetch(`${API_BASE_URL}/api/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nhs_number: patient?.nhs_number,
+          raw_text: PLACEHOLDER_SCAN_TEXT,
+          scan_type: 'appointment_letter'
+        })
+      });
+      alert("Document scanned successfully! (Uploaded to patient file)");
+    } catch (err) {
+      console.error('Scan upload failed:', err);
+      alert("Scan failed. Please try again.");
+    } finally {
       setIsScanning(false);
-    }, 2000);
+    }
+  };
+
+  const handleViewAppointments = async () => {
+    await logEvent('view_appointments');
+    setCurrentView('appointments');
+  };
+
+  const handleViewPrescriptions = async () => {
+    await logEvent('view_prescriptions');
+    setCurrentView('prescriptions');
+  };
+
+  const handleBackToDashboard = async () => {
+    await logEvent('back_to_dashboard', { from: currentView });
+    setCurrentView('dashboard');
+  };
+
+  const handleRepeatRequest = async (med) => {
+    await logEvent('request_repeat_supply', { medication: med.name, dosage: med.dosage });
+    alert(`Repeat request submitted for ${med.name}`);
   };
 
   if (isLoading) {
@@ -61,11 +101,9 @@ export default function App() {
     );
   }
 
-  // NEW: Dynamic styling function to change the border based on hover state
   const getCardStyle = (cardName) => ({
     ...styles.card,
     borderTop: hoveredCard === cardName ? '5px solid #007F3B' : '5px solid transparent',
-    // Adds a slight lift effect when hovered to make it feel tactile
     transform: hoveredCard === cardName ? 'translateY(-2px)' : 'translateY(0)',
     boxShadow: hoveredCard === cardName ? '0 6px 12px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.05)'
   });
@@ -81,7 +119,7 @@ export default function App() {
 
       <main style={styles.mainContent}>
         {currentView !== 'dashboard' && (
-          <button style={styles.backButton} onClick={() => setCurrentView('dashboard')}>
+          <button style={styles.backButton} onClick={handleBackToDashboard}>
             ← Back to Dashboard
           </button>
         )}
@@ -94,7 +132,6 @@ export default function App() {
             </div>
 
             <div style={styles.gridContainer}>
-              {/* Scan Button */}
               <button
                 style={getCardStyle('scan')}
                 onMouseEnter={() => setHoveredCard('scan')}
@@ -108,12 +145,11 @@ export default function App() {
                 <p style={styles.cardText}>Upload letters, test results, or IDs directly to your record.</p>
               </button>
 
-              {/* View Appointments Button */}
               <button
                 style={getCardStyle('appointments')}
                 onMouseEnter={() => setHoveredCard('appointments')}
                 onMouseLeave={() => setHoveredCard(null)}
-                onClick={() => setCurrentView('appointments')}
+                onClick={handleViewAppointments}
               >
                 <span style={styles.cardIcon}>📅</span>
                 <span style={styles.iconLabel}>View Appointments</span>
@@ -121,12 +157,11 @@ export default function App() {
                 <p style={styles.cardText}>Check timings, locations, and manage upcoming medical visits.</p>
               </button>
 
-              {/* View Prescriptions Button */}
               <button
                 style={getCardStyle('prescriptions')}
                 onMouseEnter={() => setHoveredCard('prescriptions')}
                 onMouseLeave={() => setHoveredCard(null)}
-                onClick={() => setCurrentView('prescriptions')}
+                onClick={handleViewPrescriptions}
               >
                 <span style={styles.cardIcon}>💊</span>
                 <span style={styles.iconLabel}>View Prescriptions</span>
@@ -137,7 +172,6 @@ export default function App() {
           </div>
         )}
 
-        {/* --- VIEW 2: APPOINTMENTS PAGE --- */}
         {currentView === 'appointments' && (
           <div>
             <h2 style={styles.sectionTitle}>Your NHS Appointments</h2>
@@ -158,7 +192,6 @@ export default function App() {
           </div>
         )}
 
-        {/* --- VIEW 3: PRESCRIPTIONS PAGE --- */}
         {currentView === 'prescriptions' && (
           <div>
             <h2 style={styles.sectionTitle}>Current Prescriptions</h2>
@@ -174,7 +207,7 @@ export default function App() {
                   <button
                     style={styles.actionButton}
                     disabled={med.repeatsLeft === 0}
-                    onClick={() => alert(`Repeat request submitted for ${med.name}`)}
+                    onClick={() => handleRepeatRequest(med)}
                   >
                     {med.repeatsLeft > 0 ? "Request Repeat Supply" : "Refills Unavailable"}
                   </button>
@@ -203,14 +236,12 @@ const styles = {
   gridContainer: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' },
   card: {
     backgroundColor: '#FFFFFF',
-    // Notice the borders are explicitly set so the 5px transparent top border doesn't overwrite the side borders
     borderBottom: '1px solid #E8EDF2',
     borderLeft: '1px solid #E8EDF2',
     borderRight: '1px solid #E8EDF2',
     borderRadius: '8px',
     padding: '30px 20px',
     cursor: 'pointer',
-    // Added 'all' to transition to make the lift and shadow animate smoothly too
     transition: 'all 0.2s ease-in-out',
     display: 'flex',
     flexDirection: 'column',

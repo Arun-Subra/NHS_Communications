@@ -1,11 +1,16 @@
-from flask import Flask, jsonify
+import os
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+from supabase import create_client
+
+load_dotenv()
 
 app = Flask(__name__)
-# Enable CORS to allow your React frontend to request data from this API
 CORS(app)
 
-# Skeleton Database: In-memory dictionary representing one patient
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+
 DATABASE = {
     "patient_info": {
         "name": "Alex",
@@ -23,8 +28,6 @@ DATABASE = {
     ]
 }
 
-# --- API ENDPOINTS ---
-
 @app.route('/api/patient', methods=['GET'])
 def get_patient():
     return jsonify(DATABASE["patient_info"])
@@ -37,6 +40,24 @@ def get_appointments():
 def get_prescriptions():
     return jsonify(DATABASE["prescriptions"])
 
+@app.route('/api/scan', methods=['POST'])
+def log_scan():
+    data = request.get_json()
+    supabase.table("document_scans").insert({
+        "nhs_number": data.get("nhs_number"),
+        "raw_text": data.get("raw_text"),
+        "scan_type": data.get("scan_type", "appointment_letter")
+    }).execute()
+    return jsonify({"status": "ok"})
+
+@app.route('/api/event', methods=['POST'])
+def log_event():
+    data = request.get_json()
+    supabase.table("button_events").insert({
+        "event_type": data.get("event_type"),
+        "metadata": data.get("metadata")
+    }).execute()
+    return jsonify({"status": "ok"})
+
 if __name__ == '__main__':
-    # Runs the server on http://127.0.0.1:5000
     app.run(debug=True, port=5000)
