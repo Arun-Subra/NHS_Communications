@@ -1,266 +1,214 @@
 import { useEffect, useState } from 'react';
+import HomeTab from './tabs/HomeTab.jsx';
+import PhotoTab from './tabs/PhotoTab.jsx';
+import MessagesTab from './tabs/MessagesTab.jsx';
 
 const API_BASE_URL = import.meta.env.DEV ? 'http://127.0.0.1:8000' : '';
 
-const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
-- blood test
-Taking place on
-- 13/12/2005
-- Saturday 13th December 2025
-At time
-- 12:05pm.`;
-
-async function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE_URL}${path}`, options);
   if (!res.ok) throw new Error(res.statusText);
   return res.json();
 }
 
-export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [isScanning, setIsScanning] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hoveredCard, setHoveredCard] = useState(null);
+// ── SVG icons ────────────────────────────────────────────────────────────────
 
+function IconHome({ filled, color }) {
+  return filled ? (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill={color}>
+      <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+    </svg>
+  ) : (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12L12 3l9 9" />
+      <path d="M9 21V12h6v9" />
+      <rect x="3" y="12" width="18" height="9" rx="1" fill="none" />
+      <path d="M3 12v9h6v-6h6v6h6V12" />
+    </svg>
+  );
+}
+
+function IconCamera({ filled, color }) {
+  return filled ? (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill={color}>
+      <path d="M9 3L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z" />
+      <circle cx="12" cy="13" r="2.5" fill="white" />
+    </svg>
+  ) : (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
+function IconMail({ filled, color }) {
+  return filled ? (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill={color}>
+      <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+    </svg>
+  ) : (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <polyline points="2,4 12,13 22,4" />
+    </svg>
+  );
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+
+const ACTIVE = '#0066CC';
+const INACTIVE = '#6B7785';
+
+const s = {
+  shell: {
+    width: '100%',
+    maxWidth: '430px',
+    minHeight: '100svh',
+    margin: '0 auto',
+    backgroundColor: '#F4F6F8',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 0 40px rgba(0,0,0,0.18)',
+    position: 'relative',
+  },
+  header: {
+    backgroundColor: '#0066CC',
+    color: '#FFFFFF',
+    padding: '14px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flexShrink: 0,
+  },
+  nhsLogo: {
+    backgroundColor: '#FFFFFF',
+    color: '#0066CC',
+    fontWeight: '700',
+    fontSize: '18px',
+    padding: '2px 8px',
+    borderRadius: '2px',
+    letterSpacing: '0.5px',
+  },
+  headerTitle: { fontSize: '18px', margin: 0, fontWeight: '400', color: '#FFFFFF' },
+  mainContent: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflowY: 'auto',
+    paddingBottom: '80px',
+  },
+  navBar: {
+    position: 'sticky',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTop: '1px solid #D4D9DE',
+    display: 'flex',
+    paddingBottom: '20px',
+    paddingTop: '8px',
+    zIndex: 10,
+  },
+  navItem: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    border: 'none',
+    background: 'none',
+    cursor: 'pointer',
+    padding: '4px 0',
+  },
+  navLabel: { fontSize: '11px', fontWeight: '500' },
+  loading: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '16px',
+    color: '#0066CC',
+  },
+};
+
+// ── App ──────────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'home', label: 'Home', Icon: IconHome },
+  { id: 'photo', label: 'Camera', Icon: IconCamera },
+  { id: 'messages', label: 'Messages', Icon: IconMail },
+];
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('photo');
+  const [isLoading, setIsLoading] = useState(true);
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
 
   useEffect(() => {
-    const fetchNHSData = async () => {
-      try {
-        const data = await apiFetch('/api/me');
+    apiFetch('/api/me')
+      .then(data => {
         setPatient(data.patient_info);
         setAppointments(data.appointments);
         setPrescriptions(data.prescriptions);
-      } catch (error) {
-        console.error("Error connecting to Flask API:", error);
-        alert("Failed to fetch data. Is your Flask server running?");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchNHSData();
+      })
+      .catch(err => console.error('Failed to fetch NHS data:', err))
+      .finally(() => setIsLoading(false));
   }, []);
 
   const logEvent = (eventType, metadata = null) =>
     apiFetch('/api/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event_type: eventType, metadata })
+      body: JSON.stringify({ event_type: eventType, metadata }),
     }).catch(err => console.error('Event log failed:', err));
 
-  const handleScanClick = async () => {
-    setIsScanning(true);
-    try {
-      await apiFetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nhs_number: patient?.nhs_number,
-          raw_text: PLACEHOLDER_SCAN_TEXT,
-          scan_type: 'appointment_letter'
-        })
-      });
-      alert("Document scanned successfully! (Uploaded to patient file)");
-    } catch (err) {
-      console.error('Scan upload failed:', err);
-      alert("Scan failed. Please try again.");
-    } finally {
-      setIsScanning(false);
+  const renderTab = () => {
+    if (activeTab === 'home') {
+      return <HomeTab patient={patient} appointments={appointments} prescriptions={prescriptions} logEvent={logEvent} />;
     }
+    if (activeTab === 'photo') {
+      return <PhotoTab patient={patient} apiFetch={apiFetch} />;
+    }
+    if (activeTab === 'messages') {
+      return <MessagesTab apiFetch={apiFetch} />;
+    }
+    return null;
   };
-
-  const handleViewAppointments = async () => {
-    await logEvent('view_appointments');
-    setCurrentView('appointments');
-  };
-
-  const handleViewPrescriptions = async () => {
-    await logEvent('view_prescriptions');
-    setCurrentView('prescriptions');
-  };
-
-  const handleBackToDashboard = async () => {
-    await logEvent('back_to_dashboard', { from: currentView });
-    setCurrentView('dashboard');
-  };
-
-  const handleRepeatRequest = async (med) => {
-    await logEvent('request_repeat_supply', { medication: med.name, dosage: med.dosage });
-    alert(`Repeat request submitted for ${med.name}`);
-  };
-
-  if (isLoading) {
-    return (
-      <div style={{ ...styles.appContainer, justifyContent: 'center', alignItems: 'center' }}>
-        <h2 style={{ color: '#005EB8' }}>Connecting to NHS Database...</h2>
-      </div>
-    );
-  }
-
-  const getCardStyle = (cardName) => ({
-    ...styles.card,
-    borderTop: hoveredCard === cardName ? '5px solid #007F3B' : '5px solid transparent',
-    transform: hoveredCard === cardName ? 'translateY(-2px)' : 'translateY(0)',
-    boxShadow: hoveredCard === cardName ? '0 6px 12px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.05)'
-  });
 
   return (
-    <div style={styles.appContainer}>
-      <header style={styles.header}>
-        <div style={styles.headerContent}>
-          <div style={styles.nhsLogo}>NHS</div>
-          <h1 style={styles.appTitle}>MyHealth Tracker</h1>
-        </div>
+    <div style={s.shell}>
+      <header style={s.header}>
+        <div style={s.nhsLogo}>NHS</div>
+        <h1 style={s.headerTitle}>MyHealth</h1>
       </header>
 
-      <main style={styles.mainContent}>
-        {currentView !== 'dashboard' && (
-          <button style={styles.backButton} onClick={handleBackToDashboard}>
-            ← Back to Dashboard
-          </button>
-        )}
-
-        {currentView === 'dashboard' && (
-          <div>
-            <div style={styles.welcomeBanner}>
-              <h2>Welcome back, {patient?.name}</h2>
-              <p>NHS Number: {patient?.nhs_number}</p>
-            </div>
-
-            <div style={styles.gridContainer}>
-              <button
-                style={getCardStyle('scan')}
-                onMouseEnter={() => setHoveredCard('scan')}
-                onMouseLeave={() => setHoveredCard(null)}
-                onClick={handleScanClick}
-                disabled={isScanning}
-              >
-                <span style={styles.cardIcon}>📷</span>
-                <span style={styles.iconLabel}>Scan Document</span>
-                <h3 style={styles.cardHeading}>{isScanning ? "Scanning Document..." : "Scan Documents"}</h3>
-                <p style={styles.cardText}>Upload letters, test results, or IDs directly to your record.</p>
-              </button>
-
-              <button
-                style={getCardStyle('appointments')}
-                onMouseEnter={() => setHoveredCard('appointments')}
-                onMouseLeave={() => setHoveredCard(null)}
-                onClick={handleViewAppointments}
-              >
-                <span style={styles.cardIcon}>📅</span>
-                <span style={styles.iconLabel}>View Appointments</span>
-                <h3 style={styles.cardHeading}>View Appointments</h3>
-                <p style={styles.cardText}>Check timings, locations, and manage upcoming medical visits.</p>
-              </button>
-
-              <button
-                style={getCardStyle('prescriptions')}
-                onMouseEnter={() => setHoveredCard('prescriptions')}
-                onMouseLeave={() => setHoveredCard(null)}
-                onClick={handleViewPrescriptions}
-              >
-                <span style={styles.cardIcon}>💊</span>
-                <span style={styles.iconLabel}>View Prescriptions</span>
-                <h3 style={styles.cardHeading}>View Prescriptions</h3>
-                <p style={styles.cardText}>Track your current medications and request repeat supplies.</p>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {currentView === 'appointments' && (
-          <div>
-            <h2 style={styles.sectionTitle}>Your NHS Appointments</h2>
-            <div style={styles.listContainer}>
-              {appointments.map(app => (
-                <div key={app.id} style={styles.listItem}>
-                  <div style={styles.listHeader}>
-                    <strong style={styles.itemTitle}>{app.clinic}</strong>
-                    <span style={app.status === 'Upcoming' ? styles.badgeActive : styles.badgeInactive}>
-                      {app.status}
-                    </span>
-                  </div>
-                  <p style={styles.itemDetail}><strong>Clinician:</strong> {app.doctor}</p>
-                  <p style={styles.itemDetail}><strong>When:</strong> {app.date} at {app.time}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {currentView === 'prescriptions' && (
-          <div>
-            <h2 style={styles.sectionTitle}>Current Prescriptions</h2>
-            <div style={styles.listContainer}>
-              {prescriptions.map(med => (
-                <div key={med.id} style={styles.listItem}>
-                  <div style={styles.listHeader}>
-                    <strong style={styles.itemTitle}>{med.name} ({med.dosage})</strong>
-                    <span style={styles.badgeActive}>{med.status}</span>
-                  </div>
-                  <p style={styles.itemDetail}><strong>Instructions:</strong> {med.frequency}</p>
-                  <p style={styles.itemDetail}><strong>Repeat Refills Remaining:</strong> {med.repeatsLeft}</p>
-                  <button
-                    style={styles.actionButton}
-                    disabled={med.repeatsLeft === 0}
-                    onClick={() => handleRepeatRequest(med)}
-                  >
-                    {med.repeatsLeft > 0 ? "Request Repeat Supply" : "Refills Unavailable"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+      <main style={s.mainContent}>
+        {isLoading
+          ? <p style={s.loading}>Connecting to NHS Database…</p>
+          : renderTab()
+        }
       </main>
 
-      <footer style={styles.footer}>
-        <p>DRP15 WebApp Prototype. Fetching live from Flask API.</p>
-      </footer>
+      <nav style={s.navBar}>
+        {TABS.map(({ id, label, Icon }) => {
+          const active = activeTab === id;
+          const color = active ? ACTIVE : INACTIVE;
+          return (
+            <button
+              key={id}
+              style={s.navItem}
+              onClick={() => setActiveTab(id)}
+              aria-label={label}
+            >
+              <Icon filled={active} color={color} />
+              <span style={{ ...s.navLabel, color }}>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
-
-const styles = {
-  appContainer: { fontFamily: '"Helvetica Neue", Arial, sans-serif', color: '#212B32', backgroundColor: '#F0F4F5', minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  header: { backgroundColor: '#005EB8', color: '#FFFFFF', padding: '15px 20px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' },
-  headerContent: { maxWidth: '1000px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '15px' },
-  nhsLogo: { backgroundColor: '#FFFFFF', color: '#005EB8', fontWeight: 'bold', fontSize: '22px', padding: '2px 10px', borderRadius: '2px' },
-  appTitle: { fontSize: '20px', margin: 0, fontWeight: '400' },
-  mainContent: { maxWidth: '1000px', width: '100%', margin: '30px auto', padding: '0 20px', flex: 1, boxSizing: 'border-box' },
-  welcomeBanner: { backgroundColor: '#FFFFFF', padding: '20px', borderRadius: '4px', marginBottom: '25px', borderBottom: '4px solid #005EB8', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
-  gridContainer: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderBottom: '1px solid #E8EDF2',
-    borderLeft: '1px solid #E8EDF2',
-    borderRight: '1px solid #E8EDF2',
-    borderRadius: '8px',
-    padding: '30px 20px',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease-in-out',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    textAlign: 'center'
-  },
-  cardIcon: { fontSize: '44px', display: 'block', marginBottom: '4px' },
-  iconLabel: { fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#005EB8', fontWeight: 'bold', marginBottom: '16px' },
-  cardHeading: { margin: '0 0 8px 0', fontSize: '20px', color: '#212B32' },
-  cardText: { margin: 0, fontSize: '14px', color: '#4C5862', lineHeight: '1.4' },
-  backButton: { background: 'none', border: 'none', color: '#005EB8', cursor: 'pointer', fontSize: '16px', marginBottom: '20px', padding: 0, textDecoration: 'underline' },
-  sectionTitle: { color: '#005EB8', borderBottom: '2px solid #D8DDE0', paddingBottom: '10px', marginBottom: '20px' },
-  listContainer: { display: 'flex', flexDirection: 'column', gap: '15px' },
-  listItem: { backgroundColor: '#FFFFFF', padding: '20px', borderRadius: '4px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', borderLeft: '4px solid #005EB8' },
-  listHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
-  itemTitle: { fontSize: '18px', color: '#212B32' },
-  itemDetail: { margin: '5px 0', color: '#4C5862' },
-  badgeActive: { backgroundColor: '#E6F3EB', color: '#007F3B', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' },
-  badgeInactive: { backgroundColor: '#F0F4F5', color: '#4C5862', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' },
-  actionButton: { marginTop: '12px', backgroundColor: '#005EB8', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
-  footer: { textAlign: 'center', padding: '20px', backgroundColor: '#E8EDF2', fontSize: '14px', color: '#4C5862', marginTop: 'auto' }
-};

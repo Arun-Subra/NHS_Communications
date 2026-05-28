@@ -76,6 +76,12 @@ def log_event():
     return jsonify({"status": "ok"})
 
 
+@app.route('/api/messages', methods=['GET'])
+def get_messages():
+    scans = supabase.table(TABLE_SCANS).select("*").order("created_at", desc=True).execute().data
+    return jsonify({"messages": scans})
+
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
