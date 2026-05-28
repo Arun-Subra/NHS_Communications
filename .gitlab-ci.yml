@@ -30,3 +30,4 @@ deploy_to_vm:
     - ssh $SSH_USER@$SERVER_IP "cd /opt/drp-touchpoint && docker-compose up -d --build"
     - sleep 9
     - ssh $SSH_USER@$SERVER_IP "curl -sf http://localhost:3000/api/health || (docker logs drp-touchpoint_backend_1 --tail 20 && exit 1)"
+    - curl -fsSX POST "$RENDER_DEPLOY_HOOK"
