@@ -28,5 +28,5 @@ deploy_to_vm:
     - rsync -avz --exclude='.git' --exclude='node_modules' --exclude='__pycache__' ./ $SSH_USER@$SERVER_IP:/opt/drp-touchpoint/
     - ssh $SSH_USER@$SERVER_IP "printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\n' '$SUPABASE_URL' '$SUPABASE_KEY' > /opt/drp-touchpoint/.env"
     - ssh $SSH_USER@$SERVER_IP "cd /opt/drp-touchpoint && docker-compose up -d --build"
-    - sleep 9
+    - sleep 8
     - ssh $SSH_USER@$SERVER_IP "curl -sf http://localhost:3000/api/health || (docker logs drp-touchpoint_backend_1 --tail 20 && exit 1)"
