@@ -118,7 +118,7 @@ const s = {
 const TABS = [
   { id: 'home', label: 'Home', Icon: IconHome },
   { id: 'photo', label: 'Camera', Icon: IconCamera },
-  { id: 'messages', label: 'Messages', Icon: IconMail },
+  { id: 'messages', label: 'Communications', Icon: IconMail },
 ];
 
 export default function App() {

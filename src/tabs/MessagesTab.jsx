@@ -46,9 +46,9 @@ export default function MessagesTab({ apiFetch }) {
 
   return (
     <div style={s.container}>
-      <p style={s.sectionTitle}>Messages</p>
+      <p style={s.sectionTitle}>Communications</p>
       {messages.length === 0
-        ? <p style={s.empty}>No messages yet. Tap the camera to send one.</p>
+        ? <p style={s.empty}>No communications yet. Scan a document to upload one.</p>
         : (
           <div style={s.list}>
             {messages.map(msg => (
