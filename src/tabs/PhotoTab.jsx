@@ -3,7 +3,7 @@ import { useState } from 'react';
 const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
 - blood test
 Taking place on
-- 13/12/2005
+- 13/12/2025
 - Saturday 13th December 2025
 At time
 - 12:05pm.`;
