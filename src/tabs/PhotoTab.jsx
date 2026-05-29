@@ -86,7 +86,7 @@ export default function PhotoTab({ patient, apiFetch }) {
 
   return (
     <div style={s.container}>
-      <p style={s.hint}>Tap to send a document scan</p>
+      <p style={s.hint}>Tap to send a document scan HELLO!</p>
       <button
         style={{ ...s.shutterOuter, transform: status === 'sending' ? 'scale(0.95)' : 'scale(1)' }}
         onClick={handleShutter}
