@@ -198,7 +198,7 @@ def process_pending_summaries():
         
     except Exception as e:
         print(f"Error processing summaries: {e}", file=sys.stderr)
-        return jsonify({"error": "Failed to process summaries"}), 500
+        return jsonify({"error": f"Failed to process summaries: {str(e)}"}), 500
 
 
 @app.route('/api/event', methods=['POST'])
