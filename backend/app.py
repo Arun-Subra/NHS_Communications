@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import base64
+import threading
 from concurrent import futures as cf
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
@@ -161,12 +162,14 @@ def log_scan():
         if not extracted_text.strip():
             return jsonify({"error": "No clear text could be scanned from this image."}), 422
 
-        _insert_record(TABLE_SCANS, {
+        result = supabase.table(TABLE_SCANS).insert({
             "nhs_number": data["nhs_number"],
             "raw_text": extracted_text,
             "scan_type": data.get("scan_type", DEFAULT_SCAN_TYPE),
             "summary_status": "pending"
-        })
+        }).execute()
+        if result.data:
+            threading.Thread(target=_process_single_scan, args=(result.data[0],), daemon=True).start()
     except Exception as e:
         print(f"OCR/Database error in /api/scan: {e}", file=sys.stderr)
         return jsonify({"error": "Failed to extract text or save document"}), 500

@@ -21,10 +21,24 @@ export default function MessagesTab({ apiFetch }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch('/api/messages')
-      .then(data => setMessages(data.messages ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let intervalId;
+
+    const fetchMessages = () => {
+      apiFetch('/api/messages')
+        .then(data => {
+          const msgs = data.messages ?? [];
+          setMessages(msgs);
+          if (msgs.length > 0 && msgs.every(m => m.summary_text)) {
+            clearInterval(intervalId);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    };
+
+    fetchMessages();
+    intervalId = setInterval(fetchMessages, 3000);
+    return () => clearInterval(intervalId);
   }, []);
 
   if (loading) return <p style={s.loading}>Loading messages…</p>;
