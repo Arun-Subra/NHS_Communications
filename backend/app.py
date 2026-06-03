@@ -29,7 +29,17 @@ CORS(app, origins=["http://localhost:3000", "http://localhost:5173"])
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
-_credentials_info = json.loads(base64.b64decode(os.environ["GCP_CREDENTIALS_JSON"]))
+_gcp_credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+_gcp_credentials_json = os.environ.get("GCP_CREDENTIALS_JSON")
+
+if _gcp_credentials_json:
+    _credentials_info = json.loads(base64.b64decode(_gcp_credentials_json))
+elif _gcp_credentials_path:
+    with open(_gcp_credentials_path) as f:
+        _credentials_info = json.load(f)
+else:
+    raise RuntimeError("Neither GCP_CREDENTIALS_JSON nor GOOGLE_APPLICATION_CREDENTIALS is set")
+
 if _credentials_info.get("type") == "service_account":
     _gcp_credentials = service_account.Credentials.from_service_account_info(
         _credentials_info,
