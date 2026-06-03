@@ -42,7 +42,7 @@ export default function MessagesTab({ apiFetch }) {
                   <span style={s.itemType}>{(msg.scan_type ?? 'scan').replace(/_/g, ' ')}</span>
                   <span style={s.itemDate}>{formatDate(msg.created_at)}</span>
                 </div>
-                <p style={s.itemPreview}>{msg.raw_text}</p>
+                <p style={s.itemPreview}>{msg.summary_text ?? 'Processing…'}</p>
               </div>
             ))}
           </div>
