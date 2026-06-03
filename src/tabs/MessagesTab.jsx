@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { C, sharedStyles } from '../styles/shared.js';
+import ReactMarkdown from 'react-markdown';
 
 const s = {
   ...sharedStyles,
   itemHeader: { ...sharedStyles.itemHeader, alignItems: 'center' },
   itemType: { fontSize: '15px', fontWeight: '600', color: C.textDark, textTransform: 'capitalize' },
   itemDate: { fontSize: '12px', color: C.textLight },
-  itemPreview: { fontSize: '14px', color: C.textMid, margin: 0, whiteSpace: 'pre-line', lineHeight: '1.4' },
-  empty: { textAlign: 'center', color: C.textLight, fontSize: '15px', marginTop: '40px' },
+  itemPreview: { fontSize: '14px', color: C.textMid, margin: 0, lineHeight: '1.4' },  empty: { textAlign: 'center', color: C.textLight, fontSize: '15px', marginTop: '40px' },
   loading: { textAlign: 'center', color: C.primary, fontSize: '15px', marginTop: '40px' },
 };
 
@@ -42,7 +42,13 @@ export default function MessagesTab({ apiFetch }) {
                   <span style={s.itemType}>{(msg.scan_type ?? 'scan').replace(/_/g, ' ')}</span>
                   <span style={s.itemDate}>{formatDate(msg.created_at)}</span>
                 </div>
-                <p style={s.itemPreview}>{msg.summary_text ?? 'Processing…'}</p>
+                <div style={s.itemPreview}>
+                  {msg.summary_text ? (
+                    <ReactMarkdown>{msg.summary_text}</ReactMarkdown>
+                  ) : (
+                    <p style={{ margin: 0 }}>Processing…</p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
