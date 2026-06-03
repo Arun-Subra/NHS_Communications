@@ -68,7 +68,7 @@ def generate_appointment_summary(raw_text):
     """
     Passes the raw OCR text to Gemini via Vertex AI for secure extraction.
     """
-    model = GenerativeModel('gemini-1.5-flash')
+    model = GenerativeModel('gemini-3.5-flash')
     
     prompt = f"""
     You are a medical assistant extracting information from an NHS letter.
