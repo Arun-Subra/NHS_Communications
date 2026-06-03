@@ -3,3 +3,5 @@ flask-cors
 python-dotenv
 supabase
 gunicorn
+google-cloud-vision
+google-cloud-aiplatform
