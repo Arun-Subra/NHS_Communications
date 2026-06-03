@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { C } from './styles/shared.js';
 import HomeTab from './tabs/HomeTab.jsx';
 import PhotoTab from './tabs/PhotoTab.jsx';
 import MessagesTab from './tabs/MessagesTab.jsx';
@@ -57,16 +58,13 @@ function IconMail({ filled, color }) {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const ACTIVE = '#0066CC';
-const INACTIVE = '#6B7785';
-
 const s = {
   shell: {
     width: '100%',
     maxWidth: '430px',
     minHeight: '100svh',
     margin: '0 auto',
-    backgroundColor: '#F4F6F8',
+    backgroundColor: C.bg,
     display: 'flex',
     flexDirection: 'column',
     boxShadow: '0 0 40px rgba(0,0,0,0.18)',
@@ -84,8 +82,8 @@ const s = {
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTop: '1px solid #D4D9DE',
+    backgroundColor: C.white,
+    borderTop: `1px solid ${C.border}`,
     display: 'flex',
     paddingBottom: '20px',
     paddingTop: '8px',
@@ -109,7 +107,7 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '16px',
-    color: '#0066CC',
+    color: C.primary,
   },
 };
 
@@ -135,7 +133,7 @@ export default function App() {
         setAppointments(data.appointments);
         setPrescriptions(data.prescriptions);
       })
-      .catch(err => console.error('Failed to fetch NHS data:', err))
+      .catch(() => {})
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -144,19 +142,12 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event_type: eventType, metadata }),
-    }).catch(err => console.error('Event log failed:', err));
+    }).catch(() => {});
 
-  const renderTab = () => {
-    if (activeTab === 'home') {
-      return <HomeTab patient={patient} appointments={appointments} prescriptions={prescriptions} logEvent={logEvent} />;
-    }
-    if (activeTab === 'photo') {
-      return <PhotoTab patient={patient} apiFetch={apiFetch} />;
-    }
-    if (activeTab === 'messages') {
-      return <MessagesTab apiFetch={apiFetch} />;
-    }
-    return null;
+  const tabContent = {
+    home: <HomeTab patient={patient} appointments={appointments} prescriptions={prescriptions} logEvent={logEvent} />,
+    photo: <PhotoTab patient={patient} apiFetch={apiFetch} />,
+    messages: <MessagesTab apiFetch={apiFetch} />,
   };
 
   return (
@@ -164,14 +155,14 @@ export default function App() {
       <main style={s.mainContent}>
         {isLoading
           ? <p style={s.loading}>Connecting to NHS Database…</p>
-          : renderTab()
+          : tabContent[activeTab]
         }
       </main>
 
       <nav style={s.navBar}>
         {TABS.map(({ id, label, Icon }) => {
           const active = activeTab === id;
-          const color = active ? ACTIVE : INACTIVE;
+          const color = active ? C.primary : C.textLight;
           return (
             <button
               key={id}

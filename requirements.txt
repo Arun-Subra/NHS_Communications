@@ -4,4 +4,4 @@ python-dotenv
 supabase
 gunicorn
 google-cloud-vision
-google-cloud-aiplatform
+google-genai

@@ -1,22 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-
-const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
-- blood test
-Taking place on
-- 13/12/2025
-- Saturday 13th December 2025
-At time
-- 12:05pm.`;
-
-const C = {
-  primary: '#0066CC',
-  primaryDark: '#004499',
-  green: '#008A50',
-  red: '#C0392B',
-  white: '#FFFFFF',
-  textMid: '#4A5660',
-  overlay: 'rgba(0, 0, 0, 0.45)',
-};
+import { C } from '../styles/shared.js';
 
 const s = {
   container: {
@@ -71,8 +54,8 @@ const s = {
     width: '92px',
     height: '92px',
     borderRadius: '50%',
-    border: '4px solid #FFFFFF',
-    boxShadow: '0 0 0 4px #0066CC, 0 4px 18px rgba(0,102,204,0.4)',
+    border: `4px solid ${C.white}`,
+    boxShadow: `0 0 0 4px ${C.primary}, 0 4px 18px rgba(0,102,204,0.4)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -126,7 +109,7 @@ const s = {
     height: '88px',
     borderRadius: '8px',
     objectFit: 'cover',
-    border: '2px solid white',
+    border: `2px solid ${C.white}`,
     zIndex: 4,
     boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
   },
@@ -151,9 +134,7 @@ export default function PhotoTab({ patient, apiFetch }) {
         }
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-          },
+          video: { facingMode: { ideal: 'environment' } },
           audio: false,
         });
 
@@ -171,7 +152,6 @@ export default function PhotoTab({ patient, apiFetch }) {
 
         setStatus('idle');
       } catch (err) {
-        console.error('Camera failed:', err);
         setCameraError(
           'Camera access failed. Check browser permissions and make sure you are using localhost or HTTPS.'
         );
@@ -220,7 +200,7 @@ export default function PhotoTab({ patient, apiFetch }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nhs_number: patient.nhs_number,
-          raw_text: PLACEHOLDER_SCAN_TEXT,
+          image_data: imageDataUrl,
           scan_type: 'appointment_letter',
         }),
       });
@@ -228,7 +208,6 @@ export default function PhotoTab({ patient, apiFetch }) {
       setStatus('sent');
       setTimeout(() => setStatus('idle'), 2000);
     } catch (err) {
-      console.error('Scan failed:', err);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 2500);
     }
