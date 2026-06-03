@@ -195,6 +195,7 @@ export default function PhotoTab({ patient, apiFetch }) {
       const imageDataUrl = captureCurrentFrame();
       setCapturedImage(imageDataUrl);
 
+      // 1. AWAIT the upload (wait for the database to save the image)
       await apiFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,9 +206,20 @@ export default function PhotoTab({ patient, apiFetch }) {
         }),
       });
 
+      // 2. FIRE AND FORGET the background processing 
+      // No 'await' here! The UI moves on instantly.
+      apiFetch('/api/process-summaries', { 
+        method: 'POST' 
+      }).catch(err => {
+        // Catch silent errors so they don't break the React component
+        console.error("Background summarization trigger failed:", err);
+      });
+
+      // 3. Instantly show success to the user
       setStatus('sent');
       setTimeout(() => setStatus('idle'), 2000);
     } catch (err) {
+      console.error("Upload failed:", err);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 2500);
     }
