@@ -26,9 +26,10 @@ deploy_to_vm:
   script:
     - ssh $SSH_USER@$SERVER_IP "pkill -f 'docker-compose' || true; pkill -f 'docker build' || true" || true
     - rsync -avz --exclude='.git' --exclude='node_modules' --exclude='__pycache__' ./ $SSH_USER@$SERVER_IP:/opt/drp-touchpoint/
-    - ssh $SSH_USER@$SERVER_IP "printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\nGOOGLE_CLOUD_PROJECT=%s\nGOOGLE_CLOUD_LOCATION=%s\n' '$SUPABASE_URL' '$SUPABASE_KEY' '$GOOGLE_CLOUD_PROJECT' '$GOOGLE_CLOUD_LOCATION' > /opt/drp-touchpoint/.env"
-    - ssh $SSH_USER@$SERVER_IP "echo '$GCP_CREDENTIALS_JSON' | base64 -d > /opt/drp-touchpoint/gcp-credentials.json"
-    - ssh $SSH_USER@$SERVER_IP "echo 'GOOGLE_APPLICATION_CREDENTIALS=/opt/drp-touchpoint/gcp-credentials.json' >> /opt/drp-touchpoint/.env"
+    - ssh $SSH_USER@$SERVER_IP "printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\nGOOGLE_CLOUD_PROJECT=%s\nGOOGLE_CLOUD_LOCATION=%s\nGOOGLE_APPLICATION_CREDENTIALS=%s\n' '$SUPABASE_URL' '$SUPABASE_KEY' '$GOOGLE_CLOUD_PROJECT' '$GOOGLE_CLOUD_LOCATION' '/opt/drp-touchpoint/gcp-credentials.json' > /opt/drp-touchpoint/.env"
+    - echo "$GCP_CREDENTIALS_JSON" | base64 -d > /tmp/gcp-credentials.json
+    - rsync -avz /tmp/gcp-credentials.json $SSH_USER@$SERVER_IP:/opt/drp-touchpoint/gcp-credentials.json
+    - rm /tmp/gcp-credentials.json
     - ssh $SSH_USER@$SERVER_IP "cd /opt/drp-touchpoint && docker-compose up -d --build"
     - sleep 8
     - ssh $SSH_USER@$SERVER_IP "curl -sf http://localhost:3000/api/health || (docker logs drp-touchpoint_backend_1 --tail 20 && exit 1)"
