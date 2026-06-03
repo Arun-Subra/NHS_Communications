@@ -34,7 +34,7 @@ supabase = create_client(_supabase_url, os.environ["SUPABASE_KEY"])
 # Vertex AI Setup (Safe Enterprise Summarization)
 vertexai.init(
     project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "europe-west2"),
+    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
 )
 
 # ─── HELPER FUNCTIONS ────────────────────────────────────────────────────────
