@@ -106,7 +106,5 @@ def serve(path):
     return send_from_directory(static, 'index.html')
 
 
-if __name__ == '__main__':
-    # Tsuru ignores this block and uses Gunicorn via the Procfile,
-    # but it's kept here for local development.
+if __name__ == '__main__': 
     app.run(debug=True, port=8000)
