@@ -3,6 +3,7 @@ import sys
 import json
 import base64
 import threading
+from datetime import datetime, timezone
 from concurrent import futures as cf
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
@@ -163,6 +164,20 @@ def log_scan():
 
         if not extracted_text.strip():
             return jsonify({"error": "No clear text could be scanned from this image."}), 422
+
+        existing = supabase.table(TABLE_SCANS)\
+            .select("id")\
+            .eq("nhs_number", data["nhs_number"])\
+            .eq("raw_text", extracted_text)\
+            .execute()
+
+        if existing.data:
+            existing_id = existing.data[0]["id"]
+            supabase.table(TABLE_SCANS)\
+                .update({"created_at": datetime.now(timezone.utc).isoformat()})\
+                .eq("id", existing_id)\
+                .execute()
+            return jsonify({"status": "ok", "message": "Scan already exists; timestamp updated."})
 
         result = supabase.table(TABLE_SCANS).insert({
             "nhs_number": data["nhs_number"],

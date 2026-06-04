@@ -115,6 +115,13 @@ const s = {
   },
 };
 
+const SCAN_MESSAGES = [
+  'Capturing image…',
+  'Reading your letter…',
+  'Extracting details…',
+  'Almost done…',
+];
+
 export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -123,6 +130,7 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const [status, setStatus] = useState('starting-camera');
   const [cameraError, setCameraError] = useState('');
   const [capturedImage, setCapturedImage] = useState(null);
+  const [scanMsgIdx, setScanMsgIdx] = useState(0);
 
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
@@ -256,9 +264,18 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
     }
   };
 
+  useEffect(() => {
+    if (status !== 'sending') return;
+    setScanMsgIdx(0);
+    const id = setInterval(() => {
+      setScanMsgIdx(i => (i + 1) % SCAN_MESSAGES.length);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [status]);
+
   const feedbackText =
     status === 'starting-camera' ? 'Starting camera…'
-    : status === 'sending' ? 'Capturing scan…'
+    : status === 'sending' ? SCAN_MESSAGES[scanMsgIdx]
     : status === 'sent' ? 'Scan sent!'
     : status === 'error' ? 'Failed — try again'
     : 'Point camera at your NHS letter';
