@@ -86,14 +86,16 @@ def perform_google_ocr(image_base64):
 
 def generate_appointment_summary(raw_text):
     prompt = f"""You are a medical assistant extracting information from an NHS letter.
-Read the following text and summarize the specific appointment details.
-Return the information clearly formatted with:
-- Clinician/Department
-- Date
-- Time
-- Location
+Read the following text and extract the specific appointment details.
 
+You MUST return the exact Markdown template below. Do not change the formatting, do not remove the bullet points, and do not add any conversational text before or after.
 If any of these details are missing, write "Not specified".
+
+**Template:**
+* **Clinician/Department:** [Insert here]
+* **Date:** [Insert here]
+* **Time:** [Insert here]
+* **Location:** [Insert here]
 
 Raw text:
 {raw_text}"""
