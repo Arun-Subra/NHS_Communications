@@ -146,7 +146,7 @@ export default function App() {
 
   const tabContent = {
     home: <HomeTab patient={patient} appointments={appointments} prescriptions={prescriptions} logEvent={logEvent} />,
-    photo: <PhotoTab patient={patient} apiFetch={apiFetch} />,
+    photo: <PhotoTab patient={patient} apiFetch={apiFetch} onNavigate={setActiveTab} />,
     messages: <MessagesTab apiFetch={apiFetch} />,
   };
 

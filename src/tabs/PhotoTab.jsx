@@ -115,7 +115,7 @@ const s = {
   },
 };
 
-export default function PhotoTab({ patient, apiFetch }) {
+export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -217,7 +217,10 @@ export default function PhotoTab({ patient, apiFetch }) {
 
       // 3. Instantly show success to the user
       setStatus('sent');
-      setTimeout(() => setStatus('idle'), 2000);
+      setTimeout(() => {
+        setStatus('idle');
+        onNavigate('messages');
+      }, 2000);
     } catch (err) {
       console.error("Upload failed:", err);
       setStatus('error');
