@@ -124,6 +124,9 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const [cameraError, setCameraError] = useState('');
   const [capturedImage, setCapturedImage] = useState(null);
 
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -148,6 +151,17 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
+        }
+
+        const track = stream.getVideoTracks()[0];
+        // Wrap in a try-catch because some older browsers don't support getCapabilities
+        try {
+          const capabilities = track.getCapabilities();
+          if (capabilities.torch) {
+            setTorchAvailable(true);
+          }
+        } catch (e) {
+          console.log("Torch capabilities check not supported.");
         }
 
         setStatus('idle');
@@ -184,6 +198,20 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     return canvas.toDataURL('image/jpeg', 0.9);
+  };
+
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    
+    const track = streamRef.current.getVideoTracks()[0];
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: !isTorchOn }]
+      });
+      setIsTorchOn(!isTorchOn);
+    } catch (err) {
+      console.error('Failed to toggle torch:', err);
+    }
   };
 
   const handleShutter = async () => {
@@ -283,6 +311,30 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
       )}
 
       <div style={s.controls}>
+        {torchAvailable && (
+          <button
+            onClick={toggleTorch}
+            style={{
+              position: 'absolute',
+              right: '32px', 
+              bottom: '24px', 
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: isTorchOn ? C.primary : 'rgba(255,255,255,0.2)',
+              border: `2px solid ${C.white}`,
+              color: C.white,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 10,
+            }}
+            aria-label="Toggle flashlight"
+          >
+            <span style={{ fontSize: '20px' }}>{isTorchOn ? '💡' : '🔦'}</span>
+          </button>
+        )}
         <button
           style={{
             ...s.shutterOuter,
