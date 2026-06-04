@@ -135,17 +135,24 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
 
-  useEffect(() => {
+  const [facingMode, setFacingMode] = useState('environment');
+
+useEffect(() => {
     let cancelled = false;
 
     async function startCamera() {
       try {
+        // Reset states while the camera switches
+        setStatus('starting-camera');
+        setTorchAvailable(false); 
+        setIsTorchOn(false);
+
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error('Camera API is not available in this browser.');
         }
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
+          video: { facingMode: { ideal: facingMode } },
           audio: false,
         });
 
@@ -162,7 +169,6 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
         }
 
         const track = stream.getVideoTracks()[0];
-        // Wrap in a try-catch because some older browsers don't support getCapabilities
         try {
           const capabilities = track.getCapabilities();
           if (capabilities.torch) {
@@ -189,7 +195,14 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, []);
+  }, [facingMode]);
+
+  const toggleCamera = () => {
+    // If the camera is currently starting or sending, ignore the click
+    if (status === 'starting-camera' || status === 'sending') return;
+    
+    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+  };
 
   const captureCurrentFrame = () => {
     const video = videoRef.current;
@@ -328,6 +341,31 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
       )}
 
       <div style={s.controls}>
+        <button
+          onClick={toggleCamera}
+          disabled={status === 'starting-camera' || status === 'sending'}
+          style={{
+            position: 'absolute',
+            left: '32px', // Placed on the left side
+            bottom: '24px', 
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            border: `2px solid ${C.white}`,
+            color: C.white,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 10,
+            transition: 'opacity 0.2s',
+            opacity: (status === 'starting-camera' || status === 'sending') ? 0.5 : 1,
+          }}
+          aria-label="Switch camera"
+        >
+          <span style={{ fontSize: '20px' }}>🔄</span>
+        </button>
         {torchAvailable && (
           <button
             onClick={toggleTorch}
