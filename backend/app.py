@@ -248,6 +248,20 @@ def get_messages():
         return jsonify({"error": "Database unavailable"}), 500
     return jsonify({"messages": scans})
 
+@app.route('/api/messages/<msg_id>', methods=['DELETE'])
+def delete_message(msg_id):
+    try:
+        # Instruct Supabase to delete the row matching the ID
+        result = supabase.table(TABLE_SCANS).delete().eq("id", msg_id).execute()
+        
+        # Verify that something was actually deleted
+        if not result.data:
+            return jsonify({"error": "Message not found"}), 404
+            
+        return jsonify({"status": "ok", "message": "Deleted successfully"})
+    except Exception as e:
+        print(f"Supabase error in /api/messages/<id>: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
 
 # ─── STATIC FILE SERVING ─────────────────────────────────────────────────────
 
