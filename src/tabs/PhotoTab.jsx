@@ -1,22 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-
-const PLACEHOLDER_SCAN_TEXT = `Your appointment is a
-- blood test
-Taking place on
-- 13/12/2025
-- Saturday 13th December 2025
-At time
-- 12:05pm.`;
-
-const C = {
-  primary: '#0066CC',
-  primaryDark: '#004499',
-  green: '#008A50',
-  red: '#C0392B',
-  white: '#FFFFFF',
-  textMid: '#4A5660',
-  overlay: 'rgba(0, 0, 0, 0.45)',
-};
+import { C } from '../styles/shared.js';
 
 const s = {
   container: {
@@ -71,8 +54,8 @@ const s = {
     width: '92px',
     height: '92px',
     borderRadius: '50%',
-    border: '4px solid #FFFFFF',
-    boxShadow: '0 0 0 4px #0066CC, 0 4px 18px rgba(0,102,204,0.4)',
+    border: `4px solid ${C.white}`,
+    boxShadow: `0 0 0 4px ${C.primary}, 0 4px 18px rgba(0,102,204,0.4)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -126,13 +109,20 @@ const s = {
     height: '88px',
     borderRadius: '8px',
     objectFit: 'cover',
-    border: '2px solid white',
+    border: `2px solid ${C.white}`,
     zIndex: 4,
     boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
   },
 };
 
-export default function PhotoTab({ patient, apiFetch }) {
+const SCAN_MESSAGES = [
+  'Capturing image…',
+  'Reading your letter…',
+  'Extracting details…',
+  'Almost done…',
+];
+
+export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -140,20 +130,29 @@ export default function PhotoTab({ patient, apiFetch }) {
   const [status, setStatus] = useState('starting-camera');
   const [cameraError, setCameraError] = useState('');
   const [capturedImage, setCapturedImage] = useState(null);
+  const [scanMsgIdx, setScanMsgIdx] = useState(0);
 
-  useEffect(() => {
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
+
+  const [facingMode, setFacingMode] = useState('environment');
+
+useEffect(() => {
     let cancelled = false;
 
     async function startCamera() {
       try {
+        // Reset states while the camera switches
+        setStatus('starting-camera');
+        setTorchAvailable(false); 
+        setIsTorchOn(false);
+
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error('Camera API is not available in this browser.');
         }
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-          },
+          video: { facingMode: { ideal: facingMode } },
           audio: false,
         });
 
@@ -169,9 +168,18 @@ export default function PhotoTab({ patient, apiFetch }) {
           await videoRef.current.play();
         }
 
+        const track = stream.getVideoTracks()[0];
+        try {
+          const capabilities = track.getCapabilities();
+          if (capabilities.torch) {
+            setTorchAvailable(true);
+          }
+        } catch (e) {
+          console.log("Torch capabilities check not supported.");
+        }
+
         setStatus('idle');
       } catch (err) {
-        console.error('Camera failed:', err);
         setCameraError(
           'Camera access failed. Check browser permissions and make sure you are using localhost or HTTPS.'
         );
@@ -187,7 +195,14 @@ export default function PhotoTab({ patient, apiFetch }) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, []);
+  }, [facingMode]);
+
+  const toggleCamera = () => {
+    // If the camera is currently starting or sending, ignore the click
+    if (status === 'starting-camera' || status === 'sending') return;
+    
+    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+  };
 
   const captureCurrentFrame = () => {
     const video = videoRef.current;
@@ -206,6 +221,20 @@ export default function PhotoTab({ patient, apiFetch }) {
     return canvas.toDataURL('image/jpeg', 0.9);
   };
 
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    
+    const track = streamRef.current.getVideoTracks()[0];
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: !isTorchOn }]
+      });
+      setIsTorchOn(!isTorchOn);
+    } catch (err) {
+      console.error('Failed to toggle torch:', err);
+    }
+  };
+
   const handleShutter = async () => {
     if (!patient || status === 'sending') return;
 
@@ -215,28 +244,51 @@ export default function PhotoTab({ patient, apiFetch }) {
       const imageDataUrl = captureCurrentFrame();
       setCapturedImage(imageDataUrl);
 
+      // 1. AWAIT the upload (wait for the database to save the image)
       await apiFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nhs_number: patient.nhs_number,
-          raw_text: PLACEHOLDER_SCAN_TEXT,
+          image_data: imageDataUrl,
           scan_type: 'appointment_letter',
         }),
       });
 
+      // 2. FIRE AND FORGET the background processing 
+      // No 'await' here! The UI moves on instantly.
+      apiFetch('/api/process-summaries', { 
+        method: 'POST' 
+      }).catch(err => {
+        // Catch silent errors so they don't break the React component
+        console.error("Background summarization trigger failed:", err);
+      });
+
+      // 3. Instantly show success to the user
       setStatus('sent');
-      setTimeout(() => setStatus('idle'), 2000);
+      setTimeout(() => {
+        setStatus('idle');
+        onNavigate('messages');
+      }, 2000);
     } catch (err) {
-      console.error('Scan failed:', err);
+      console.error("Upload failed:", err);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 2500);
     }
   };
 
+  useEffect(() => {
+    if (status !== 'sending') return;
+    setScanMsgIdx(0);
+    const id = setInterval(() => {
+      setScanMsgIdx(i => (i + 1) % SCAN_MESSAGES.length);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [status]);
+
   const feedbackText =
     status === 'starting-camera' ? 'Starting camera…'
-    : status === 'sending' ? 'Capturing scan…'
+    : status === 'sending' ? SCAN_MESSAGES[scanMsgIdx]
     : status === 'sent' ? 'Scan sent!'
     : status === 'error' ? 'Failed — try again'
     : 'Point camera at your NHS letter';
@@ -289,6 +341,55 @@ export default function PhotoTab({ patient, apiFetch }) {
       )}
 
       <div style={s.controls}>
+        <button
+          onClick={toggleCamera}
+          disabled={status === 'starting-camera' || status === 'sending'}
+          style={{
+            position: 'absolute',
+            left: '32px', // Placed on the left side
+            bottom: '24px', 
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            border: `2px solid ${C.white}`,
+            color: C.white,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 10,
+            transition: 'opacity 0.2s',
+            opacity: (status === 'starting-camera' || status === 'sending') ? 0.5 : 1,
+          }}
+          aria-label="Switch camera"
+        >
+          <span style={{ fontSize: '20px' }}>🔄</span>
+        </button>
+        {torchAvailable && (
+          <button
+            onClick={toggleTorch}
+            style={{
+              position: 'absolute',
+              right: '32px', 
+              bottom: '24px', 
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: isTorchOn ? C.primary : 'rgba(255,255,255,0.2)',
+              border: `2px solid ${C.white}`,
+              color: C.white,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 10,
+            }}
+            aria-label="Toggle flashlight"
+          >
+            <span style={{ fontSize: '20px' }}>{isTorchOn ? '💡' : '🔦'}</span>
+          </button>
+        )}
         <button
           style={{
             ...s.shutterOuter,

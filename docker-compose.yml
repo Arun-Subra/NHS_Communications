@@ -11,8 +11,8 @@ services:
     env_file:
       - .env
     volumes:
-      - /opt/drp-touchpoint/gcp-credentials.json:/opt/drp-touchpoint/gcp-credentials.json
-      
+      - /opt/drp-touchpoint/gcp-credentials.json:/opt/drp-touchpoint/gcp-credentials.json:ro
+
   frontend:
     build:
       context: .

@@ -12,3 +12,9 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_CLOUD_LOCATION
+        value: europe-west2
+      - key: GCP_CREDENTIALS_JSON
+        sync: false

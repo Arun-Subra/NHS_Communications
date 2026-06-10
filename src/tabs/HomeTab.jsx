@@ -1,17 +1,9 @@
-const C = {
-  primary: '#0066CC',
-  green: '#008A50',
-  textDark: '#1F2D38',
-  textMid: '#4A5660',
-  bg: '#F4F6F8',
-  white: '#FFFFFF',
-  border: '#D4D9DE',
-  badgeGreenBg: '#E6F4ED',
-  badgeGrayBg: '#EFF2F4',
-};
+import { C, sharedStyles } from '../styles/shared.js';
 
 const s = {
-  container: { padding: '20px 16px 0', overflowY: 'auto' },
+  ...sharedStyles,
+  list: { ...sharedStyles.list, marginBottom: '24px' },
+  itemHeader: { ...sharedStyles.itemHeader, alignItems: 'flex-start' },
   banner: {
     backgroundColor: C.white,
     padding: '18px 16px',
@@ -22,49 +14,10 @@ const s = {
   },
   bannerName: { margin: '0 0 4px', fontSize: '20px', fontWeight: '600', color: C.textDark },
   bannerNhs: { margin: 0, fontSize: '14px', color: C.textMid },
-  sectionTitle: {
-    fontSize: '17px',
-    fontWeight: '600',
-    color: C.primary,
-    borderBottom: `2px solid ${C.border}`,
-    paddingBottom: '8px',
-    marginBottom: '12px',
-  },
-  list: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' },
-  item: {
-    backgroundColor: C.white,
-    padding: '14px 16px',
-    borderRadius: '6px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    borderLeft: `4px solid ${C.primary}`,
-  },
-  itemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' },
   itemTitle: { fontSize: '16px', fontWeight: '600', color: C.textDark, margin: 0 },
   itemDetail: { fontSize: '14px', color: C.textMid, margin: '3px 0' },
   badgeGreen: { backgroundColor: C.badgeGreenBg, color: C.green, padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' },
   badgeGray: { backgroundColor: C.badgeGrayBg, color: C.textMid, padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' },
-  actionBtn: {
-    marginTop: '10px',
-    backgroundColor: C.primary,
-    color: C.white,
-    border: 'none',
-    padding: '8px 14px',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: '600',
-    fontSize: '14px',
-  },
-  disabledBtn: {
-    marginTop: '10px',
-    backgroundColor: C.border,
-    color: C.textMid,
-    border: 'none',
-    padding: '8px 14px',
-    borderRadius: '4px',
-    cursor: 'not-allowed',
-    fontWeight: '600',
-    fontSize: '14px',
-  },
 };
 
 export default function HomeTab({ patient, appointments, prescriptions, logEvent }) {
@@ -104,7 +57,12 @@ export default function HomeTab({ patient, appointments, prescriptions, logEvent
             <p style={s.itemDetail}><strong>Instructions:</strong> {med.frequency}</p>
             <p style={s.itemDetail}><strong>Repeats remaining:</strong> {med.repeatsLeft}</p>
             <button
-              style={med.repeatsLeft > 0 ? s.actionBtn : s.disabledBtn}
+              style={{
+                ...s.btnBase,
+                backgroundColor: med.repeatsLeft > 0 ? C.primary : C.border,
+                color: med.repeatsLeft > 0 ? C.white : C.textMid,
+                cursor: med.repeatsLeft > 0 ? 'pointer' : 'not-allowed',
+              }}
               disabled={med.repeatsLeft === 0}
               onClick={() => handleRepeatRequest(med)}
             >
