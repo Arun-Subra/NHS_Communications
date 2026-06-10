@@ -1,268 +1,280 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { C, sharedStyles } from '../styles/shared.js';
+import os
+import sys
+import json
+import base64
+import threading
+from datetime import datetime, timezone
+from concurrent import futures as cf
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+from supabase import create_client
 
-const s = {
-  ...sharedStyles,
-  itemHeader: { ...sharedStyles.itemHeader, alignItems: 'center' },
-  itemType: { fontSize: '15px', fontWeight: '600', color: C.textDark, textTransform: 'capitalize' },
-  itemDate: { fontSize: '12px', color: C.textLight },
-  itemPreview: { fontSize: '14px', color: C.textMid, margin: 0, lineHeight: '1.4' },
-  empty: { textAlign: 'center', color: C.textLight, fontSize: '15px', marginTop: '40px' },
-  loading: { textAlign: 'center', color: C.primary, fontSize: '15px', marginTop: '40px' },
-  itemPressable: { 
-    ...sharedStyles.item, 
-    cursor: 'pointer', 
-    userSelect: 'none', 
-    WebkitUserSelect: 'none', 
-    WebkitTouchCallout: 'none' 
-  },
-  controlsBar: { 
-    display: 'flex', 
-    gap: '10px', 
-    marginBottom: '16px', 
-    padding: '0 16px' 
-  },
-  searchInput: { 
-    flex: 1, 
-    padding: '10px 14px', 
-    borderRadius: '8px', 
-    border: `1px solid ${C.divider || '#eee'}`, 
-    fontSize: '15px',
-    backgroundColor: C.white,
-    color: C.textDark,
-    outline: 'none'
-  },
-  sortButton: { 
-    padding: '0 16px', 
-    borderRadius: '8px', 
-    border: 'none', 
-    backgroundColor: C.primary, 
-    color: C.white, 
-    fontWeight: '600',
-    cursor: 'pointer'
-  },
-  // --- NEW: Context Menu Styles ---
-  contextMenuOverlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 99, // Sits just underneath the menu to catch outside clicks
-  },
-  contextMenu: {
-    position: 'fixed',
-    backgroundColor: C.white,
-    borderRadius: '8px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-    padding: '8px 0',
-    zIndex: 100, // Highest z-index to sit on top of everything
-    minWidth: '160px',
-  },
-  contextMenuItem: {
-    padding: '12px 20px',
-    color: '#D32F2F', // A nice danger red
-    fontSize: '15px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-  }
-};
+from google.cloud import vision
+from google.oauth2 import service_account, credentials as oauth2_credentials
+from google import genai
 
-function formatDate(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
-}
+# ─── CONFIGURATION & INITIALIZATION ──────────────────────────────────────────
 
-export default function MessagesTab({ apiFetch }) {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState('desc');
-  
-  // --- NEW: State for the floating menu ---
-  const [contextMenu, setContextMenu] = useState(null); // Will hold { id, x, y }
-  
-  const pressTimer = useRef(null);
+load_dotenv()
 
-  useEffect(() => {
-    let intervalId;
+TABLE_SCANS = "document_scans"
+TABLE_EVENTS = "button_events"
+TABLE_PATIENTS = "patients"
+TABLE_APPOINTMENTS = "appointments"
+TABLE_PRESCRIPTIONS = "prescriptions"
+DEFAULT_SCAN_TYPE = "appointment_letter"
+MAX_SUMMARY_WORKERS = 5
 
-    const fetchMessages = () => {
-      apiFetch('/api/messages')
-        .then(data => {
-          const msgs = data.messages ?? [];
-          setMessages(msgs);
-          if (msgs.length > 0 && msgs.every(m => m.summary_text)) {
-            clearInterval(intervalId);
-          }
+app = Flask(__name__, static_folder="../dist", static_url_path="/")
+CORS(app, origins=["http://localhost:3000", "http://localhost:5173"])
+
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+
+_gcp_credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+_gcp_credentials_json = os.environ.get("GCP_CREDENTIALS_JSON")
+
+if _gcp_credentials_json:
+    _credentials_info = json.loads(base64.b64decode(_gcp_credentials_json))
+elif _gcp_credentials_path:
+    with open(_gcp_credentials_path) as f:
+        _credentials_info = json.load(f)
+else:
+    raise RuntimeError("Neither GCP_CREDENTIALS_JSON nor GOOGLE_APPLICATION_CREDENTIALS is set")
+
+if _credentials_info.get("type") == "service_account":
+    _gcp_credentials = service_account.Credentials.from_service_account_info(
+        _credentials_info,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+elif _credentials_info.get("type") == "authorized_user":
+    _gcp_credentials = oauth2_credentials.Credentials(
+        token=None,
+        refresh_token=_credentials_info["refresh_token"],
+        client_id=_credentials_info["client_id"],
+        client_secret=_credentials_info["client_secret"],
+        token_uri="https://oauth2.googleapis.com/token",
+        quota_project_id=_credentials_info.get("quota_project_id"),
+    )
+else:
+    raise ValueError(f"Unsupported GCP credential type: {_credentials_info.get('type')}")
+
+_gemini_client = genai.Client(
+    vertexai=True,
+    project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "europe-west2"),
+    credentials=_gcp_credentials,
+)
+GEMINI_MODEL = "gemini-2.5-flash"
+
+_vision_client = vision.ImageAnnotatorClient(credentials=_gcp_credentials)
+
+# ─── HELPER FUNCTIONS ────────────────────────────────────────────────────────
+
+def _insert_record(table, payload):
+    supabase.table(table).insert(payload).execute()
+
+def perform_google_ocr(image_base64):
+    if "," in image_base64:
+        image_base64 = image_base64.split(",", 1)[1]
+    image_bytes = base64.b64decode(image_base64)
+    image = vision.Image(content=image_bytes)
+    response = _vision_client.document_text_detection(image=image)
+    if response.error.message:
+        raise Exception(f"Google Vision Error: {response.error.message}")
+    annotation = response.full_text_annotation
+    return annotation.text if annotation else ""
+
+def generate_appointment_summary(raw_text):
+    prompt = f"""You are a medical assistant extracting information from an NHS letter.
+Read the following text and extract the specific appointment details.
+
+You MUST return the exact Markdown template below. Do not change the formatting, do not remove the bullet points, and do not add any conversational text before or after.
+If any of these details are missing, write "Not specified".
+
+For the "Directions" link, construct a Google Maps search URL format: `https://www.google.com/maps/search/?api=1&query=` followed by the extracted location name (replace spaces with plus signs '+'). If the location is "Not specified", do not create a link and simply write "Not specified".
+
+**Template:**
+* **Clinician/Department:** [Insert here]
+* **Date:** [Insert here]
+* **Time:** [Insert here]
+* **Location:** [Insert here]
+* **Directions:** [Map & Directions](https://www.google.com/maps/search/?api=1&query=[Insert+Location+With+Pluses+Here])
+
+Raw text:
+{raw_text}"""
+    response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    return response.text
+
+def _process_single_scan(scan):
+    raw_text = scan.get("raw_text")
+    scan_id = scan.get("id")
+    if not raw_text:
+        return 0
+    try:
+        summary = generate_appointment_summary(raw_text)
+        supabase.table(TABLE_SCANS)\
+            .update({"summary_text": summary, "summary_status": "completed"})\
+            .eq("id", scan_id)\
+            .execute()
+        return 1
+    except Exception:
+        return 0
+
+# ─── API ROUTES ──────────────────────────────────────────────────────────────
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"})
+
+
+@app.route('/api/me', methods=['GET'])
+def get_me():
+    try:
+        patients = supabase.table(TABLE_PATIENTS).select("*").limit(1).execute().data
+        if not patients:
+            return jsonify({"error": "No patient found"}), 404
+
+        nhs = patients[0]["nhs_number"]
+        appointments = supabase.table(TABLE_APPOINTMENTS).select("*").eq("nhs_number", nhs).execute().data
+        prescriptions = supabase.table(TABLE_PRESCRIPTIONS).select("*").eq("nhs_number", nhs).execute().data
+    except Exception as e:
+        print(f"Supabase error in /api/me: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
+
+    for p in prescriptions:
+        p["repeatsLeft"] = p.pop("repeats_left", 0)
+
+    return jsonify({
+        "patient_info": {"name": patients[0]["name"], "nhs_number": nhs},
+        "appointments": appointments,
+        "prescriptions": prescriptions,
+    })
+
+
+@app.route('/api/scan', methods=['POST'])
+def log_scan():
+    data = request.get_json()
+    if data is None:
+        return jsonify({"error": "Request body required"}), 400
+
+    missing = {"nhs_number", "image_data"} - data.keys()
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    try:
+        extracted_text = perform_google_ocr(data["image_data"])
+
+        if not extracted_text.strip():
+            return jsonify({"error": "No clear text could be scanned from this image."}), 422
+
+        existing = supabase.table(TABLE_SCANS)\
+            .select("id")\
+            .eq("nhs_number", data["nhs_number"])\
+            .eq("raw_text", extracted_text)\
+            .execute()
+
+        if existing.data:
+            existing_id = existing.data[0]["id"]
+            supabase.table(TABLE_SCANS)\
+                .update({"created_at": datetime.now(timezone.utc).isoformat()})\
+                .eq("id", existing_id)\
+                .execute()
+            return jsonify({"status": "ok", "message": "Scan already exists; timestamp updated."})
+
+        result = supabase.table(TABLE_SCANS).insert({
+            "nhs_number": data["nhs_number"],
+            "raw_text": extracted_text,
+            "scan_type": data.get("scan_type", DEFAULT_SCAN_TYPE),
+            "summary_status": "pending"
+        }).execute()
+        if result.data:
+            threading.Thread(target=_process_single_scan, args=(result.data[0],), daemon=True).start()
+    except Exception as e:
+        print(f"OCR/Database error in /api/scan: {e}", file=sys.stderr)
+        return jsonify({"error": "Failed to extract text or save document"}), 500
+
+    return jsonify({"status": "ok", "message": "Scan saved and queued for summary."})
+
+
+@app.route('/api/process-summaries', methods=['POST'])
+def process_pending_summaries():
+    try:
+        pending_scans = supabase.table(TABLE_SCANS)\
+            .select("*")\
+            .eq("summary_status", "pending")\
+            .execute().data
+
+        if not pending_scans:
+            return jsonify({"message": "No pending summaries to process.", "processed_count": 0})
+
+        with cf.ThreadPoolExecutor(max_workers=MAX_SUMMARY_WORKERS) as executor:
+            processed_count = sum(executor.map(_process_single_scan, pending_scans))
+
+        return jsonify({
+            "status": "ok",
+            "message": f"Successfully processed {processed_count} summaries.",
+            "processed_count": processed_count
         })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    };
 
-    fetchMessages();
-    intervalId = setInterval(fetchMessages, 3000);
-    return () => clearInterval(intervalId);
-  }, [apiFetch]);
+    except Exception as e:
+        print(f"Error processing summaries: {e}", file=sys.stderr)
+        return jsonify({"error": f"Failed to process summaries: {str(e)}"}), 500
 
-  const displayedMessages = useMemo(() => {
-    let result = [...messages];
 
-    if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(msg => {
-        const dateStr = formatDate(msg.created_at).toLowerCase();
-        const typeStr = (msg.scan_type ?? '').replace(/_/g, ' ').toLowerCase();
-        const summaryStr = (msg.summary_text ?? '').toLowerCase();
-        return dateStr.includes(query) || typeStr.includes(query) || summaryStr.includes(query);
-      });
-    }
+@app.route('/api/event', methods=['POST'])
+def log_event():
+    data = request.get_json()
+    if data is None:
+        return jsonify({"error": "Request body required"}), 400
+    if not data.get("event_type"):
+        return jsonify({"error": "Missing field: event_type"}), 400
+    try:
+        _insert_record(TABLE_EVENTS, {
+            "event_type": data["event_type"],
+            "metadata": data.get("metadata"),
+        })
+    except Exception:
+        return jsonify({"error": "Database error"}), 500
+    return jsonify({"status": "ok"})
 
-    result.sort((a, b) => {
-      const dateA = new Date(a.created_at).getTime();
-      const dateB = new Date(b.created_at).getTime();
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
-    });
 
-    return result;
-  }, [messages, searchQuery, sortOrder]);
+@app.route('/api/messages', methods=['GET'])
+def get_messages():
+    try:
+        scans = supabase.table(TABLE_SCANS).select("*").order("created_at", desc=True).execute().data
+    except Exception as e:
+        print(f"Supabase error in /api/messages: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
+    return jsonify({"messages": scans})
 
-  const handleDelete = async (id) => {
-    const confirmDelete = window.confirm("Are you sure you want to delete this summary?");
-    if (!confirmDelete) return;
+@app.route('/api/messages/<msg_id>', methods=['DELETE'])
+def delete_message(msg_id):
+    try:
+        # Instruct Supabase to delete the row matching the ID
+        result = supabase.table(TABLE_SCANS).delete().eq("id", msg_id).execute()
+        
+        # Verify that something was actually deleted
+        if not result.data:
+            return jsonify({"error": "Message not found"}), 404
+            
+        return jsonify({"status": "ok", "message": "Deleted successfully"})
+    except Exception as e:
+        print(f"Supabase error in /api/messages/<id>: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
 
-    try {
-      await apiFetch(`/api/messages/${id}`, { method: 'DELETE' });
-      setMessages(prev => prev.filter(msg => msg.id !== id));
-    } catch (err) {
-      console.error("Failed to delete message:", err);
-      alert("Failed to delete. Please try again.");
-    }
-  };
+# ─── STATIC FILE SERVING ─────────────────────────────────────────────────────
 
-  // --- UPDATED: Pass the event (e) to grab the finger's coordinates ---
-  const handlePointerDown = (e, id) => {
-    // Grab the exact X and Y pixels of the click/tap
-    const x = e.clientX;
-    const y = e.clientY;
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    static = app.static_folder
+    if not static or not os.path.isdir(static):
+        return jsonify({"error": "Not found"}), 404
+    if path and os.path.exists(os.path.join(static, path)):
+        return send_from_directory(static, path)
+    return send_from_directory(static, 'index.html')
 
-    pressTimer.current = setTimeout(() => {
-      // Prevent the menu from rendering off the right edge of the screen
-      const safeX = Math.min(x, window.innerWidth - 180); 
-      setContextMenu({ id, x: safeX, y });
-    }, 800); 
-  };
 
-  const cancelPress = () => {
-    if (pressTimer.current) clearTimeout(pressTimer.current);
-  };
-
-  if (loading) return <p style={s.loading}>Loading messages…</p>;
-
-  return (
-    <div style={s.container}>
-      <p style={s.sectionTitle}>Communications</p>
-      
-      {/* --- NEW: Render the floating Context Menu if it's active --- */}
-      {contextMenu && (
-        <>
-          {/* Invisible overlay that closes the menu if you click outside of it */}
-          <div style={s.contextMenuOverlay} onPointerDown={() => setContextMenu(null)} />
-          
-          {/* The actual floating menu, positioned at the user's finger */}
-          <div style={{ ...s.contextMenu, top: contextMenu.y, left: contextMenu.x }}>
-            <div 
-              style={s.contextMenuItem} 
-              onClick={() => {
-                const idToDelete = contextMenu.id;
-                setContextMenu(null); // Hide menu first
-                handleDelete(idToDelete); // Then trigger the confirmation box
-              }}
-            >
-              <span style={{ fontSize: '18px' }}>🗑️</span> Delete Scan
-            </div>
-          </div>
-        </>
-      )}
-
-      {messages.length > 0 && (
-        <div style={s.controlsBar}>
-          <input 
-            type="text" 
-            placeholder="Search date, type, or keyword..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={s.searchInput}
-          />
-          <button 
-            onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-            style={s.sortButton}
-            aria-label="Toggle sort order"
-          >
-            {sortOrder === 'desc' ? '↓ Newest' : '↑ Oldest'}
-          </button>
-        </div>
-      )}
-
-      {messages.length === 0
-        ? <p style={s.empty}>No communications yet. Scan a document to upload one.</p>
-        : displayedMessages.length === 0 
-        ? <p style={s.empty}>No results found for "{searchQuery}".</p>
-        : (
-          <div style={s.list}>
-            {displayedMessages.map(msg => (
-              <div 
-                key={msg.id} 
-                style={s.itemPressable}
-                // --- UPDATED: Pass the event (e) here ---
-                onPointerDown={(e) => handlePointerDown(e, msg.id)}
-                onPointerUp={cancelPress}
-                onPointerLeave={cancelPress}
-                onPointerCancel={cancelPress}
-                onTouchMove={cancelPress}
-              >
-                <div style={s.itemHeader}>
-                  <span style={s.itemType}>{(msg.scan_type ?? 'scan').replace(/_/g, ' ')}</span>
-                  <span style={s.itemDate}>{formatDate(msg.created_at)}</span>
-                </div>
-                <div style={s.itemPreview}>
-                  {msg.summary_text ? (
-                    <ReactMarkdown
-                      components={{
-                        a: ({ href, children }) => (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: C.primary,
-                              fontWeight: '600',
-                              textDecoration: 'none', 
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            onPointerDown={(e) => e.stopPropagation()} 
-                          >
-                            <span>📍</span>
-                            <span style={{ textDecoration: 'underline' }}>{children}</span>
-                          </a>
-                        )
-                      }}
-                    >
-                      {msg.summary_text}
-                    </ReactMarkdown>
-                  ) : (
-                    <p style={{ margin: 0 }}>Processing…</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      }
-    </div>
-  );
-}
+if __name__ == '__main__':
+    app.run(debug=True, port=8000)

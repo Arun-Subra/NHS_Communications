@@ -41,6 +41,31 @@ const s = {
     color: C.white, 
     fontWeight: '600',
     cursor: 'pointer'
+  },
+  // --- NEW: Context Menu Styles ---
+  contextMenuOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 99, // Sits just underneath the menu to catch outside clicks
+  },
+  contextMenu: {
+    position: 'fixed',
+    backgroundColor: C.white,
+    borderRadius: '8px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+    padding: '8px 0',
+    zIndex: 100, // Highest z-index to sit on top of everything
+    minWidth: '160px',
+  },
+  contextMenuItem: {
+    padding: '12px 20px',
+    color: '#D32F2F', // A nice danger red
+    fontSize: '15px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   }
 };
 
@@ -53,11 +78,12 @@ export default function MessagesTab({ apiFetch }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Search and Sort State
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   
-  // Timer reference for the long press
+  // --- NEW: State for the floating menu ---
+  const [contextMenu, setContextMenu] = useState(null); // Will hold { id, x, y }
+  
   const pressTimer = useRef(null);
 
   useEffect(() => {
@@ -68,7 +94,6 @@ export default function MessagesTab({ apiFetch }) {
         .then(data => {
           const msgs = data.messages ?? [];
           setMessages(msgs);
-          // Stop polling if we have messages and none are "pending"
           if (msgs.length > 0 && msgs.every(m => m.summary_text)) {
             clearInterval(intervalId);
           }
@@ -82,23 +107,19 @@ export default function MessagesTab({ apiFetch }) {
     return () => clearInterval(intervalId);
   }, [apiFetch]);
 
-  // --- Filter and Sort Logic ---
   const displayedMessages = useMemo(() => {
     let result = [...messages];
 
-    // 1. Filter by search query
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
       result = result.filter(msg => {
         const dateStr = formatDate(msg.created_at).toLowerCase();
         const typeStr = (msg.scan_type ?? '').replace(/_/g, ' ').toLowerCase();
         const summaryStr = (msg.summary_text ?? '').toLowerCase();
-        
         return dateStr.includes(query) || typeStr.includes(query) || summaryStr.includes(query);
       });
     }
 
-    // 2. Sort by Date
     result.sort((a, b) => {
       const dateA = new Date(a.created_at).getTime();
       const dateB = new Date(b.created_at).getTime();
@@ -108,7 +129,6 @@ export default function MessagesTab({ apiFetch }) {
     return result;
   }, [messages, searchQuery, sortOrder]);
 
-  // --- Delete functionality ---
   const handleDelete = async (id) => {
     const confirmDelete = window.confirm("Are you sure you want to delete this summary?");
     if (!confirmDelete) return;
@@ -122,11 +142,17 @@ export default function MessagesTab({ apiFetch }) {
     }
   };
 
-  // --- Press and Hold logic ---
-  const handlePointerDown = (id) => {
+  // --- UPDATED: Pass the event (e) to grab the finger's coordinates ---
+  const handlePointerDown = (e, id) => {
+    // Grab the exact X and Y pixels of the click/tap
+    const x = e.clientX;
+    const y = e.clientY;
+
     pressTimer.current = setTimeout(() => {
-      handleDelete(id);
-    }, 800); // 800ms triggers the long press
+      // Prevent the menu from rendering off the right edge of the screen
+      const safeX = Math.min(x, window.innerWidth - 180); 
+      setContextMenu({ id, x: safeX, y });
+    }, 800); 
   };
 
   const cancelPress = () => {
@@ -139,7 +165,28 @@ export default function MessagesTab({ apiFetch }) {
     <div style={s.container}>
       <p style={s.sectionTitle}>Communications</p>
       
-      {/* Search and Sort Bar (Only show if there are any messages at all) */}
+      {/* --- NEW: Render the floating Context Menu if it's active --- */}
+      {contextMenu && (
+        <>
+          {/* Invisible overlay that closes the menu if you click outside of it */}
+          <div style={s.contextMenuOverlay} onPointerDown={() => setContextMenu(null)} />
+          
+          {/* The actual floating menu, positioned at the user's finger */}
+          <div style={{ ...s.contextMenu, top: contextMenu.y, left: contextMenu.x }}>
+            <div 
+              style={s.contextMenuItem} 
+              onClick={() => {
+                const idToDelete = contextMenu.id;
+                setContextMenu(null); // Hide menu first
+                handleDelete(idToDelete); // Then trigger the confirmation box
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>🗑️</span> Delete Scan
+            </div>
+          </div>
+        </>
+      )}
+
       {messages.length > 0 && (
         <div style={s.controlsBar}>
           <input 
@@ -169,7 +216,8 @@ export default function MessagesTab({ apiFetch }) {
               <div 
                 key={msg.id} 
                 style={s.itemPressable}
-                onPointerDown={() => handlePointerDown(msg.id)}
+                // --- UPDATED: Pass the event (e) here ---
+                onPointerDown={(e) => handlePointerDown(e, msg.id)}
                 onPointerUp={cancelPress}
                 onPointerLeave={cancelPress}
                 onPointerCancel={cancelPress}
