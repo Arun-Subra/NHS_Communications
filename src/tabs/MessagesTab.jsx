@@ -68,13 +68,14 @@ export default function MessagesTab({ apiFetch }) {
                             style={{
                               color: C.primary,
                               fontWeight: '600',
-                              textDecoration: 'underline',
+                              textDecoration: 'none', 
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px'
                             }}
                           >
-                            📍 {children}
+                            <span>📍</span>
+                            <span style={{ textDecoration: 'underline' }}>{children}</span>
                           </a>
                         )
                       }}
