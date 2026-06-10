@@ -92,11 +92,14 @@ Read the following text and extract the specific appointment details.
 You MUST return the exact Markdown template below. Do not change the formatting, do not remove the bullet points, and do not add any conversational text before or after.
 If any of these details are missing, write "Not specified".
 
+For the "Directions" link, construct a Google Maps search URL format: `https://www.google.com/maps/search/?api=1&query=` followed by the extracted location name (replace spaces with plus signs '+'). If the location is "Not specified", do not create a link and simply write "Not specified".
+
 **Template:**
 * **Clinician/Department:** [Insert here]
 * **Date:** [Insert here]
 * **Time:** [Insert here]
 * **Location:** [Insert here]
+* **Directions:** [Map & Directions](https://www.google.com/maps/search/?api=1&query=[Insert+Location+With+Pluses+Here])
 
 Raw text:
 {raw_text}"""

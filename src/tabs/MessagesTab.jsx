@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { C, sharedStyles } from '../styles/shared.js';
 import ReactMarkdown from 'react-markdown';
+import { C, sharedStyles } from '../styles/shared.js';
 
 const s = {
   ...sharedStyles,
@@ -58,7 +58,29 @@ export default function MessagesTab({ apiFetch }) {
                 </div>
                 <div style={s.itemPreview}>
                   {msg.summary_text ? (
-                    <ReactMarkdown>{msg.summary_text}</ReactMarkdown>
+                    <ReactMarkdown
+                      components={{
+                        a: ({ href, children }) => (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: C.primary,
+                              fontWeight: '600',
+                              textDecoration: 'underline',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            📍 {children}
+                          </a>
+                        )
+                      }}
+                    >
+                      {msg.summary_text}
+                    </ReactMarkdown>
                   ) : (
                     <p style={{ margin: 0 }}>Processing…</p>
                   )}
