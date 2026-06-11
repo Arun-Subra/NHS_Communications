@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { C, sharedStyles } from '../styles/shared.js';
 
@@ -7,18 +7,18 @@ const s = {
   itemHeader: { ...sharedStyles.itemHeader, alignItems: 'center' },
   itemType: { fontSize: '15px', fontWeight: '600', color: C.textDark, textTransform: 'capitalize' },
   itemDate: { fontSize: '12px', color: C.textLight },
-  
-  itemPreviewCollapsed: { 
-    fontSize: '14px', 
-    color: C.textMid, 
-    margin: 0, 
+
+  itemPreviewCollapsed: {
+    fontSize: '14px',
+    color: C.textMid,
+    margin: 0,
     lineHeight: '1.5',
     display: '-webkit-box',
-    WebkitLineClamp: 5, 
+    WebkitLineClamp: 5,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   },
-  
+
   fullScreenModal: {
     position: 'fixed', inset: 0, backgroundColor: C.background || '#F7F9FC',
     zIndex: 9999, display: 'flex', flexDirection: 'column', overflowY: 'auto',
@@ -31,11 +31,25 @@ const s = {
     background: 'none', border: 'none', color: C.primary, fontSize: '16px',
     fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0',
   },
+  
+  // --- Your Custom Header Trash Button ---
+  deleteButtonHeader: {
+    background: 'none',
+    border: 'none',
+    fontSize: '20px',
+    cursor: 'pointer',
+    marginLeft: 'auto', // Pushes the trash bin button to the far right
+    padding: '6px 10px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   modalContent: {
     padding: '20px', backgroundColor: C.white, margin: '16px', borderRadius: '12px',
     boxShadow: '0 2px 10px rgba(0,0,0,0.05)', fontSize: '15px', lineHeight: '1.6', color: C.textDark,
   },
-  
+
   calendarButton: {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
     width: '100%', padding: '14px', marginTop: '20px', borderRadius: '8px',
@@ -43,7 +57,7 @@ const s = {
     border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,102,204,0.3)',
   },
 
-  // --- NEW: Action Sheet Styles ---
+  // --- Calendar Action Sheet Styles ---
   actionSheetOverlay: {
     position: 'fixed', inset: 0, zIndex: 10, borderRadius: '12px'
   },
@@ -58,31 +72,20 @@ const s = {
     border: 'none', fontSize: '16px', fontWeight: '500', color: C.textDark,
     textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px'
   },
-  // --------------------------------
 
   empty: { textAlign: 'center', color: C.textLight, fontSize: '15px', marginTop: '40px' },
   loading: { textAlign: 'center', color: C.primary, fontSize: '15px', marginTop: '40px' },
-  itemPressable: { 
-    ...sharedStyles.item, cursor: 'pointer', userSelect: 'none', 
-    WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+  itemPressable: {
+    ...sharedStyles.item, cursor: 'pointer',
   },
   controlsBar: { display: 'flex', gap: '10px', marginBottom: '16px', padding: '0 16px' },
-  searchInput: { 
-    flex: 1, padding: '10px 14px', borderRadius: '8px', border: `1px solid ${C.divider || '#eee'}`, 
+  searchInput: {
+    flex: 1, padding: '10px 14px', borderRadius: '8px', border: `1px solid ${C.divider || '#eee'}`,
     fontSize: '15px', backgroundColor: C.white, color: C.textDark, outline: 'none'
   },
-  sortButton: { 
-    padding: '0 16px', borderRadius: '8px', border: 'none', 
+  sortButton: {
+    padding: '0 16px', borderRadius: '8px', border: 'none',
     backgroundColor: C.primary, color: C.white, fontWeight: '600', cursor: 'pointer'
-  },
-  contextMenuOverlay: { position: 'fixed', inset: 0, zIndex: 99 },
-  contextMenu: {
-    position: 'fixed', backgroundColor: C.white, borderRadius: '8px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.15)', padding: '8px 0', zIndex: 100, minWidth: '160px',
-  },
-  contextMenuItem: {
-    padding: '12px 20px', color: '#D32F2F', fontSize: '15px',
-    fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
   }
 };
 
@@ -94,15 +97,12 @@ function formatDate(iso) {
 export default function MessagesTab({ apiFetch }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [contextMenu, setContextMenu] = useState(null);
+  
   const [expandedMsg, setExpandedMsg] = useState(null);
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
-  
-  const pressTimer = useRef(null);
-  const isLongPress = useRef(false);
 
   useEffect(() => {
     let intervalId;
@@ -116,7 +116,7 @@ export default function MessagesTab({ apiFetch }) {
             clearInterval(intervalId);
           }
         })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setLoading(false));
     };
 
@@ -145,44 +145,21 @@ export default function MessagesTab({ apiFetch }) {
   }, [messages, searchQuery, sortOrder]);
 
   const handleDelete = async (id) => {
-    const confirmDelete = window.confirm("Are you sure you want to delete this summary?");
+    // Your customised prompt message
+    const confirmDelete = window.confirm("Are you sure you wish to delete this entry?");
     if (!confirmDelete) return;
 
     try {
       await apiFetch(`/api/messages/${id}`, { method: 'DELETE' });
       setMessages(prev => prev.filter(msg => msg.id !== id));
-      if (expandedMsg?.id === id) setExpandedMsg(null); 
+      if (expandedMsg?.id === id) setExpandedMsg(null); // Closes modal view cleanly if active
     } catch (err) {
       console.error("Failed to delete message:", err);
       alert("Failed to delete. Please try again.");
     }
   };
 
-  const handlePointerDown = (e, id) => {
-    isLongPress.current = false; 
-    const x = e.clientX;
-    const y = e.clientY;
-
-    pressTimer.current = setTimeout(() => {
-      isLongPress.current = true; 
-      const safeX = Math.min(x, window.innerWidth - 180); 
-      setContextMenu({ id, x: safeX, y });
-    }, 800); 
-  };
-
-  const cancelPress = () => {
-    if (pressTimer.current) clearTimeout(pressTimer.current);
-  };
-
-  const handleClick = (msg) => {
-    if (isLongPress.current) {
-      isLongPress.current = false;
-      return;
-    }
-    setExpandedMsg(msg);
-  };
-
-  // --- NEW: Calendar Logic ---
+  // --- Dual Calendar Logic ---
   const getEventDetails = (msg) => {
     const text = msg.summary_text || '';
     const extract = (key) => {
@@ -252,10 +229,10 @@ export default function MessagesTab({ apiFetch }) {
     <a
       href={href} target="_blank" rel="noopener noreferrer"
       style={{
-        color: C.primary, fontWeight: '600', textDecoration: 'none', 
+        color: C.primary, fontWeight: '600', textDecoration: 'none',
         display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '8px'
       }}
-      onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} 
+      onClick={(e) => e.stopPropagation()}
     >
       <span>📍</span><span style={{ textDecoration: 'underline' }}>{children}</span>
     </a>
@@ -266,23 +243,32 @@ export default function MessagesTab({ apiFetch }) {
   return (
     <div style={s.container}>
       <p style={s.sectionTitle}>Communications</p>
-      
+
+      {/* FULL SCREEN MODE MODAL */}
       {expandedMsg && (
         <div style={s.fullScreenModal}>
           <div style={s.modalHeader}>
             <button style={s.backButton} onClick={() => setExpandedMsg(null)}>
               <span>←</span> Back
             </button>
-            <span style={{ marginLeft: 'auto', fontWeight: '600', color: C.textDark }}>
+            <span style={{ marginLeft: '16px', fontWeight: '600', color: C.textDark }}>
               {(expandedMsg.scan_type ?? 'scan').replace(/_/g, ' ')}
             </span>
+            {/* Your Header Delete Option */}
+            <button
+              style={s.deleteButtonHeader}
+              onClick={() => handleDelete(expandedMsg.id)}
+              aria-label="Delete entry"
+            >
+              🗑️
+            </button>
           </div>
           <div style={s.modalContent}>
             <ReactMarkdown components={{ a: CustomLink }}>
               {expandedMsg.summary_text}
             </ReactMarkdown>
-            
-            {/* --- NEW: Calendar Action Sheet Container --- */}
+
+            {/* --- Calendar Action Sheet Container --- */}
             <div style={{ position: 'relative', marginTop: '20px' }}>
               {showCalendarMenu && (
                 <>
@@ -305,37 +291,18 @@ export default function MessagesTab({ apiFetch }) {
                 <span style={{ fontSize: '20px' }}>📅</span> Add to Calendar
               </button>
             </div>
-            {/* ------------------------------------------- */}
-            
+            {/* --------------------------------------- */}
           </div>
         </div>
       )}
 
-      {contextMenu && (
-        <>
-          <div style={s.contextMenuOverlay} onPointerDown={() => setContextMenu(null)} />
-          <div style={{ ...s.contextMenu, top: contextMenu.y, left: contextMenu.x }}>
-            <div 
-              style={s.contextMenuItem} 
-              onClick={() => {
-                const idToDelete = contextMenu.id;
-                setContextMenu(null);
-                handleDelete(idToDelete);
-              }}
-            >
-              <span style={{ fontSize: '18px' }}>🗑️</span> Delete Scan
-            </div>
-          </div>
-        </>
-      )}
-
       {messages.length > 0 && (
         <div style={s.controlsBar}>
-          <input 
+          <input
             type="text" placeholder="Search date, type, or keyword..."
             value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={s.searchInput}
           />
-          <button 
+          <button
             onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
             style={s.sortButton} aria-label="Toggle sort order"
           >
@@ -346,38 +313,35 @@ export default function MessagesTab({ apiFetch }) {
 
       {messages.length === 0
         ? <p style={s.empty}>No communications yet. Scan a document to upload one.</p>
-        : displayedMessages.length === 0 
-        ? <p style={s.empty}>No results found for "{searchQuery}".</p>
-        : (
-          <div style={s.list}>
-            {displayedMessages.map(msg => (
-              <div 
-                key={msg.id} style={s.itemPressable}
-                onPointerDown={(e) => handlePointerDown(e, msg.id)}
-                onPointerUp={cancelPress} onPointerLeave={cancelPress}
-                onPointerCancel={cancelPress} onTouchMove={cancelPress}
-                onClick={() => handleClick(msg)}
-              >
-                <div style={s.itemHeader}>
-                  <span style={s.itemType}>{(msg.scan_type ?? 'scan').replace(/_/g, ' ')}</span>
-                  <span style={s.itemDate}>{formatDate(msg.created_at)}</span>
+        : displayedMessages.length === 0
+          ? <p style={s.empty}>No results found for "{searchQuery}".</p>
+          : (
+            <div style={s.list}>
+              {displayedMessages.map(msg => (
+                <div
+                  key={msg.id} style={s.itemPressable}
+                  onClick={() => setExpandedMsg(msg)}
+                >
+                  <div style={s.itemHeader}>
+                    <span style={s.itemType}>{(msg.scan_type ?? 'scan').replace(/_/g, ' ')}</span>
+                    <span style={s.itemDate}>{formatDate(msg.created_at)}</span>
+                  </div>
+
+                  {msg.summary_text ? (
+                    <div style={s.itemPreviewCollapsed}>
+                      <ReactMarkdown components={{ a: () => null }}>
+                        {msg.summary_text}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div style={s.itemPreviewCollapsed}>
+                      <p style={{ margin: 0 }}>Processing…</p>
+                    </div>
+                  )}
                 </div>
-                
-                {msg.summary_text ? (
-                  <div style={s.itemPreviewCollapsed}>
-                    <ReactMarkdown components={{ a: () => null }}>
-                      {msg.summary_text}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <div style={s.itemPreviewCollapsed}>
-                    <p style={{ margin: 0 }}>Processing…</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
+          )
       }
     </div>
   );
