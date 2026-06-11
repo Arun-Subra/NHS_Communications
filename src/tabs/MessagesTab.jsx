@@ -36,14 +36,29 @@ const s = {
     boxShadow: '0 2px 10px rgba(0,0,0,0.05)', fontSize: '15px', lineHeight: '1.6', color: C.textDark,
   },
   
-  // --- NEW: Calendar Button Style ---
   calendarButton: {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
     width: '100%', padding: '14px', marginTop: '20px', borderRadius: '8px',
     backgroundColor: C.primary, color: C.white, fontSize: '16px', fontWeight: '600',
     border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,102,204,0.3)',
   },
-  // ----------------------------------
+
+  // --- NEW: Action Sheet Styles ---
+  actionSheetOverlay: {
+    position: 'fixed', inset: 0, zIndex: 10, borderRadius: '12px'
+  },
+  actionSheet: {
+    position: 'absolute', bottom: '100%', left: 0, right: 0, 
+    backgroundColor: C.white, borderRadius: '12px', padding: '8px',
+    boxShadow: '0 -4px 20px rgba(0,0,0,0.15)', marginBottom: '10px',
+    zIndex: 11, border: `1px solid ${C.divider || '#eee'}`,
+  },
+  actionSheetBtn: {
+    width: '100%', padding: '14px', backgroundColor: 'transparent',
+    border: 'none', fontSize: '16px', fontWeight: '500', color: C.textDark,
+    textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px'
+  },
+  // --------------------------------
 
   empty: { textAlign: 'center', color: C.textLight, fontSize: '15px', marginTop: '40px' },
   loading: { textAlign: 'center', color: C.primary, fontSize: '15px', marginTop: '40px' },
@@ -84,6 +99,7 @@ export default function MessagesTab({ apiFetch }) {
   const [sortOrder, setSortOrder] = useState('desc');
   const [contextMenu, setContextMenu] = useState(null);
   const [expandedMsg, setExpandedMsg] = useState(null);
+  const [showCalendarMenu, setShowCalendarMenu] = useState(false);
   
   const pressTimer = useRef(null);
   const isLongPress = useRef(false);
@@ -166,11 +182,9 @@ export default function MessagesTab({ apiFetch }) {
     setExpandedMsg(msg);
   };
 
-  // --- NEW: Calendar Generator Function ---
-  const handleAddToCalendar = (msg) => {
+  // --- NEW: Calendar Logic ---
+  const getEventDetails = (msg) => {
     const text = msg.summary_text || '';
-    
-    // Helper to safely extract markdown values
     const extract = (key) => {
       const match = text.match(new RegExp(`\\*\\*${key}:\\*\\*\\s*(.+)`, 'i'));
       return match ? match[1].trim() : 'Not specified';
@@ -181,40 +195,29 @@ export default function MessagesTab({ apiFetch }) {
     const title = `NHS: ${extract('Clinician/Department')}`;
     const locationStr = extract('Location');
 
-    // Default to today if parsing fails
     let startDate = new Date();
-    
-    // Try to parse the Date and Time extracted by the AI
     if (dateStr !== 'Not specified') {
-      const timeStringToParse = timeStr !== 'Not specified' ? timeStr : '09:00'; // Default to 9 AM if no time
+      const timeStringToParse = timeStr !== 'Not specified' ? timeStr : '09:00'; 
       const parsedDate = new Date(`${dateStr} ${timeStringToParse}`);
-      
-      // Check if it's a valid date
-      if (!isNaN(parsedDate.getTime())) {
-        startDate = parsedDate;
-      }
+      if (!isNaN(parsedDate.getTime())) startDate = parsedDate;
     }
-
-    // Assume appointment lasts 1 hour
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); 
 
-    // Convert to ICS standard format: YYYYMMDDTHHMMSSZ
+    return { title, startDate, endDate, locationStr };
+  };
+
+  const handleAppleCalendar = (msg) => {
+    const { title, startDate, endDate, locationStr } = getEventDetails(msg);
     const formatICS = (date) => date.toISOString().replace(/-|:|\.\d+/g, '');
 
     const icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'BEGIN:VEVENT',
-      `DTSTART:${formatICS(startDate)}`,
-      `DTEND:${formatICS(endDate)}`,
-      `SUMMARY:${title}`,
-      `LOCATION:${locationStr}`,
-      `DESCRIPTION:Appointment Details extracted from NHS Scan. Please verify details against your original letter.\\n\\nView full details in the NHS Communications app.`,
-      'END:VEVENT',
-      'END:VCALENDAR'
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT',
+      `DTSTART:${formatICS(startDate)}`, `DTEND:${formatICS(endDate)}`,
+      `SUMMARY:${title}`, `LOCATION:${locationStr}`,
+      `DESCRIPTION:Appointment details extracted from NHS Scan.`,
+      'END:VEVENT', 'END:VCALENDAR'
     ].join('\n');
 
-    // Create a downloadable file in the browser
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -224,7 +227,26 @@ export default function MessagesTab({ apiFetch }) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    
+    setShowCalendarMenu(false); 
   };
+
+  const handleGoogleCalendar = (msg) => {
+    const { title, startDate, endDate, locationStr } = getEventDetails(msg);
+    const formatToUTC = (date) => date.toISOString().replace(/-|:|\.\d+/g, '');
+
+    const baseUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
+    const params = new URLSearchParams({
+      text: title,
+      dates: `${formatToUTC(startDate)}/${formatToUTC(endDate)}`,
+      details: 'Appointment details extracted from NHS Scan. Please verify against your original letter.',
+      location: locationStr !== 'Not specified' ? locationStr : ''
+    });
+
+    window.open(`${baseUrl}&${params.toString()}`, '_blank');
+    setShowCalendarMenu(false); 
+  };
+  // ---------------------------
 
   const CustomLink = ({ href, children }) => (
     <a
@@ -260,13 +282,31 @@ export default function MessagesTab({ apiFetch }) {
               {expandedMsg.summary_text}
             </ReactMarkdown>
             
-            {/* --- NEW: Add to Calendar Button --- */}
-            <button 
-              style={s.calendarButton}
-              onClick={() => handleAddToCalendar(expandedMsg)}
-            >
-              <span style={{ fontSize: '20px' }}>📅</span> Add to Calendar
-            </button>
+            {/* --- NEW: Calendar Action Sheet Container --- */}
+            <div style={{ position: 'relative', marginTop: '20px' }}>
+              {showCalendarMenu && (
+                <>
+                  <div style={s.actionSheetOverlay} onClick={() => setShowCalendarMenu(false)} />
+                  <div style={s.actionSheet}>
+                    <button style={s.actionSheetBtn} onClick={() => handleAppleCalendar(expandedMsg)}>
+                      <span style={{ fontSize: '20px' }}>🍎</span> Apple Calendar
+                    </button>
+                    <div style={{ height: '1px', backgroundColor: '#eee', margin: '4px 0' }} />
+                    <button style={s.actionSheetBtn} onClick={() => handleGoogleCalendar(expandedMsg)}>
+                      <span style={{ fontSize: '20px' }}>🔵</span> Google Calendar
+                    </button>
+                  </div>
+                </>
+              )}
+              <button 
+                style={{ ...s.calendarButton, marginTop: 0 }}
+                onClick={() => setShowCalendarMenu(!showCalendarMenu)}
+              >
+                <span style={{ fontSize: '20px' }}>📅</span> Add to Calendar
+              </button>
+            </div>
+            {/* ------------------------------------------- */}
+            
           </div>
         </div>
       )}
