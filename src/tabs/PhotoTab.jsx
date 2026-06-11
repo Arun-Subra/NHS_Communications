@@ -39,42 +39,6 @@ const s = {
     fontSize: '14px',
     opacity: 0.9,
   },
-  
-  // --- NEW: Toggle Styles ---
-  toggleContainer: {
-    display: 'flex',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: '20px',
-    padding: '4px',
-    marginTop: '12px',
-    width: 'fit-content',
-    backdropFilter: 'blur(4px)',
-  },
-  toggleBtnActive: {
-    backgroundColor: C.primary,
-    color: C.white,
-    borderRadius: '16px',
-    padding: '6px 14px',
-    fontSize: '13px',
-    fontWeight: '600',
-    border: 'none',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-  },
-  toggleBtnInactive: {
-    backgroundColor: 'transparent',
-    color: C.white,
-    borderRadius: '16px',
-    padding: '6px 14px',
-    fontSize: '13px',
-    fontWeight: '600',
-    border: 'none',
-    cursor: 'pointer',
-    opacity: 0.7,
-    transition: 'all 0.2s ease',
-  },
-  // -------------------------
-
   controls: {
     position: 'absolute',
     left: 0,
@@ -153,7 +117,7 @@ const s = {
 
 const SCAN_MESSAGES = [
   'Capturing image…',
-  'Reading your letter…',
+  'Analyzing document…',
   'Extracting details…',
   'Almost done…',
 ];
@@ -172,9 +136,6 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const [isTorchOn, setIsTorchOn] = useState(false);
 
   const [facingMode, setFacingMode] = useState('environment');
-  
-  // --- NEW: Scan Type State ---
-  const [scanType, setScanType] = useState('appointment_letter');
 
   useEffect(() => {
     let cancelled = false;
@@ -280,14 +241,14 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
       const imageDataUrl = captureCurrentFrame();
       setCapturedImage(imageDataUrl);
 
-      // --- UPDATED: Passing the selected scanType to backend ---
+      // Tell the backend to figure out what type of document this is automatically
       await apiFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nhs_number: patient.nhs_number,
           image_data: imageDataUrl,
-          scan_type: scanType, 
+          scan_type: 'auto_detect',
         }),
       });
 
@@ -361,23 +322,7 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
 
       <div style={s.topOverlay}>
         <p style={s.title}>Scan a document</p>
-        <p style={s.subtitle}>Take a photo of an NHS letter or prescription</p>
-        
-        {/* --- NEW: Document Type Toggle --- */}
-        <div style={s.toggleContainer}>
-          <button 
-            style={scanType === 'appointment_letter' ? s.toggleBtnActive : s.toggleBtnInactive}
-            onClick={() => setScanType('appointment_letter')}
-          >
-            Appointment
-          </button>
-          <button 
-            style={scanType === 'prescription' ? s.toggleBtnActive : s.toggleBtnInactive}
-            onClick={() => setScanType('prescription')}
-          >
-            Prescription
-          </button>
-        </div>
+        <p style={s.subtitle}>Take a photo of any NHS letter or prescription</p>
       </div>
 
       {capturedImage && (

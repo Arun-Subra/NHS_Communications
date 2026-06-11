@@ -85,6 +85,20 @@ def perform_google_ocr(image_base64):
     annotation = response.full_text_annotation
     return annotation.text if annotation else ""
 
+def classify_document(raw_text):
+    prompt = f"""You are an AI document classifier for the NHS. 
+Read the following text and determine if it is an 'appointment' letter or a 'prescription'/'medication' document.
+Reply with EXACTLY the word 'appointment' or 'prescription' and absolutely nothing else.
+
+Raw text:
+{raw_text}"""
+    response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    result = response.text.strip().lower()
+    
+    if 'prescription' in result:
+        return 'prescription'
+    return 'appointment_letter'
+
 def generate_appointment_summary(raw_text):
     prompt = f"""You are a medical assistant extracting information from an NHS letter.
 Read the following text and extract the specific appointment details.
@@ -108,7 +122,6 @@ Raw text:
     response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     return response.text
 
-# --- NEW: Prescription AI Prompt ---
 def generate_prescription_summary(raw_text):
     prompt = f"""You are a medical assistant extracting information from an NHS prescription or medication letter.
 Read the following text and extract the specific medication details.
@@ -130,31 +143,35 @@ Raw text:
 {raw_text}"""
     response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     return response.text
-# -----------------------------------
 
-# --- UPDATED: Process Scan Logic ---
 def _process_single_scan(scan):
     raw_text = scan.get("raw_text")
     scan_id = scan.get("id")
-    scan_type = scan.get("scan_type", DEFAULT_SCAN_TYPE)
     
     if not raw_text:
         return 0
     try:
-        # Route to the correct AI prompt based on the frontend toggle
-        if scan_type == "prescription":
+        # 1. AI automatically detects the document type
+        detected_type = classify_document(raw_text)
+        
+        # 2. Route to the correct AI prompt based on detection
+        if detected_type == "prescription":
             summary = generate_prescription_summary(raw_text)
         else:
             summary = generate_appointment_summary(raw_text)
             
+        # 3. Save the summary AND the detected type back to the database
         supabase.table(TABLE_SCANS)\
-            .update({"summary_text": summary, "summary_status": "completed"})\
+            .update({
+                "scan_type": detected_type.replace('_', ' '),
+                "summary_text": summary, 
+                "summary_status": "completed"
+            })\
             .eq("id", scan_id)\
             .execute()
         return 1
     except Exception:
         return 0
-# -----------------------------------
 
 # ─── API ROUTES ──────────────────────────────────────────────────────────────
 
