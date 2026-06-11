@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { C, sharedStyles } from '../styles/shared.js';
 
@@ -31,14 +31,13 @@ const s = {
     background: 'none', border: 'none', color: C.primary, fontSize: '16px',
     fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 0',
   },
-  
-  // --- Your Custom Header Trash Button ---
+
   deleteButtonHeader: {
     background: 'none',
     border: 'none',
     fontSize: '20px',
     cursor: 'pointer',
-    marginLeft: 'auto', // Pushes the trash bin button to the far right
+    marginLeft: 'auto',
     padding: '6px 10px',
     display: 'flex',
     alignItems: 'center',
@@ -57,12 +56,11 @@ const s = {
     border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,102,204,0.3)',
   },
 
-  // --- Calendar Action Sheet Styles ---
   actionSheetOverlay: {
     position: 'fixed', inset: 0, zIndex: 10, borderRadius: '12px'
   },
   actionSheet: {
-    position: 'absolute', bottom: '100%', left: 0, right: 0, 
+    position: 'absolute', bottom: '100%', left: 0, right: 0,
     backgroundColor: C.white, borderRadius: '12px', padding: '8px',
     boxShadow: '0 -4px 20px rgba(0,0,0,0.15)', marginBottom: '10px',
     zIndex: 11, border: `1px solid ${C.divider || '#eee'}`,
@@ -100,7 +98,7 @@ export default function MessagesTab({ apiFetch }) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
-  
+
   const [expandedMsg, setExpandedMsg] = useState(null);
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
 
@@ -145,21 +143,19 @@ export default function MessagesTab({ apiFetch }) {
   }, [messages, searchQuery, sortOrder]);
 
   const handleDelete = async (id) => {
-    // Your customised prompt message
     const confirmDelete = window.confirm("Are you sure you wish to delete this entry?");
     if (!confirmDelete) return;
 
     try {
       await apiFetch(`/api/messages/${id}`, { method: 'DELETE' });
       setMessages(prev => prev.filter(msg => msg.id !== id));
-      if (expandedMsg?.id === id) setExpandedMsg(null); // Closes modal view cleanly if active
+      if (expandedMsg?.id === id) setExpandedMsg(null);
     } catch (err) {
       console.error("Failed to delete message:", err);
       alert("Failed to delete. Please try again.");
     }
   };
 
-  // --- Dual Calendar Logic ---
   const getEventDetails = (msg) => {
     const text = msg.summary_text || '';
     const extract = (key) => {
@@ -174,11 +170,11 @@ export default function MessagesTab({ apiFetch }) {
 
     let startDate = new Date();
     if (dateStr !== 'Not specified') {
-      const timeStringToParse = timeStr !== 'Not specified' ? timeStr : '09:00'; 
+      const timeStringToParse = timeStr !== 'Not specified' ? timeStr : '09:00';
       const parsedDate = new Date(`${dateStr} ${timeStringToParse}`);
       if (!isNaN(parsedDate.getTime())) startDate = parsedDate;
     }
-    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); 
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 
     return { title, startDate, endDate, locationStr };
   };
@@ -204,8 +200,8 @@ export default function MessagesTab({ apiFetch }) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
-    setShowCalendarMenu(false); 
+
+    setShowCalendarMenu(false);
   };
 
   const handleGoogleCalendar = (msg) => {
@@ -221,9 +217,8 @@ export default function MessagesTab({ apiFetch }) {
     });
 
     window.open(`${baseUrl}&${params.toString()}`, '_blank');
-    setShowCalendarMenu(false); 
+    setShowCalendarMenu(false);
   };
-  // ---------------------------
 
   const CustomLink = ({ href, children }) => (
     <a
@@ -237,6 +232,14 @@ export default function MessagesTab({ apiFetch }) {
       <span>📍</span><span style={{ textDecoration: 'underline' }}>{children}</span>
     </a>
   );
+
+  // Helper function to isolate Essential Details for the list feed preview
+  const renderEssentialOnly = (fullMarkdownText) => {
+    if (!fullMarkdownText) return '';
+    // Splits text at the Extra Information header and returns the first section
+    const sections = fullMarkdownText.split(/\*\*Extra Information:\*\*/i);
+    return sections[0].trim();
+  };
 
   if (loading) return <p style={s.loading}>Loading messages…</p>;
 
@@ -254,7 +257,6 @@ export default function MessagesTab({ apiFetch }) {
             <span style={{ marginLeft: '16px', fontWeight: '600', color: C.textDark }}>
               {(expandedMsg.scan_type ?? 'scan').replace(/_/g, ' ')}
             </span>
-            {/* Your Header Delete Option */}
             <button
               style={s.deleteButtonHeader}
               onClick={() => handleDelete(expandedMsg.id)}
@@ -264,11 +266,12 @@ export default function MessagesTab({ apiFetch }) {
             </button>
           </div>
           <div style={s.modalContent}>
+            {/* Renders the full summary containing both Essential and Extra segments */}
             <ReactMarkdown components={{ a: CustomLink }}>
               {expandedMsg.summary_text}
             </ReactMarkdown>
 
-            {/* --- Calendar Action Sheet Container --- */}
+            {/* Calendar Action Sheet Container */}
             <div style={{ position: 'relative', marginTop: '20px' }}>
               {showCalendarMenu && (
                 <>
@@ -284,14 +287,13 @@ export default function MessagesTab({ apiFetch }) {
                   </div>
                 </>
               )}
-              <button 
+              <button
                 style={{ ...s.calendarButton, marginTop: 0 }}
                 onClick={() => setShowCalendarMenu(!showCalendarMenu)}
               >
                 <span style={{ fontSize: '20px' }}>📅</span> Add to Calendar
               </button>
             </div>
-            {/* --------------------------------------- */}
           </div>
         </div>
       )}
@@ -329,8 +331,9 @@ export default function MessagesTab({ apiFetch }) {
 
                   {msg.summary_text ? (
                     <div style={s.itemPreviewCollapsed}>
+                      {/* Uses the separation function to isolate preview data in list context */}
                       <ReactMarkdown components={{ a: () => null }}>
-                        {msg.summary_text}
+                        {renderEssentialOnly(msg.summary_text)}
                       </ReactMarkdown>
                     </div>
                   ) : (
