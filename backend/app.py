@@ -108,13 +108,45 @@ Raw text:
     response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     return response.text
 
+# --- NEW: Prescription AI Prompt ---
+def generate_prescription_summary(raw_text):
+    prompt = f"""You are a medical assistant extracting information from an NHS prescription or medication letter.
+Read the following text and extract the specific medication details.
+
+You MUST return the exact Markdown template below. Do not change the formatting or remove the bullet points.
+If any details are missing, write "Not specified".
+
+**Medication Details:**
+* **Medication Name:** [Insert here]
+* **Dosage:** [Insert here]
+* **Frequency/Instructions:** [Insert here]
+
+**Extra Information:**
+* **Prescribing Clinician:** [Insert here]
+* **Date:** [Insert here]
+* **Important Notes:** [Insert any warnings or extra instructions here]
+
+Raw text:
+{raw_text}"""
+    response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    return response.text
+# -----------------------------------
+
+# --- UPDATED: Process Scan Logic ---
 def _process_single_scan(scan):
     raw_text = scan.get("raw_text")
     scan_id = scan.get("id")
+    scan_type = scan.get("scan_type", DEFAULT_SCAN_TYPE)
+    
     if not raw_text:
         return 0
     try:
-        summary = generate_appointment_summary(raw_text)
+        # Route to the correct AI prompt based on the frontend toggle
+        if scan_type == "prescription":
+            summary = generate_prescription_summary(raw_text)
+        else:
+            summary = generate_appointment_summary(raw_text)
+            
         supabase.table(TABLE_SCANS)\
             .update({"summary_text": summary, "summary_status": "completed"})\
             .eq("id", scan_id)\
@@ -122,6 +154,7 @@ def _process_single_scan(scan):
         return 1
     except Exception:
         return 0
+# -----------------------------------
 
 # ─── API ROUTES ──────────────────────────────────────────────────────────────
 
@@ -253,10 +286,8 @@ def get_messages():
 @app.route('/api/messages/<msg_id>', methods=['DELETE'])
 def delete_message(msg_id):
     try:
-        # Instruct Supabase to delete the row matching the ID
         result = supabase.table(TABLE_SCANS).delete().eq("id", msg_id).execute()
         
-        # Verify that something was actually deleted
         if not result.data:
             return jsonify({"error": "Message not found"}), 404
             

@@ -39,6 +39,42 @@ const s = {
     fontSize: '14px',
     opacity: 0.9,
   },
+  
+  // --- NEW: Toggle Styles ---
+  toggleContainer: {
+    display: 'flex',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: '20px',
+    padding: '4px',
+    marginTop: '12px',
+    width: 'fit-content',
+    backdropFilter: 'blur(4px)',
+  },
+  toggleBtnActive: {
+    backgroundColor: C.primary,
+    color: C.white,
+    borderRadius: '16px',
+    padding: '6px 14px',
+    fontSize: '13px',
+    fontWeight: '600',
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  toggleBtnInactive: {
+    backgroundColor: 'transparent',
+    color: C.white,
+    borderRadius: '16px',
+    padding: '6px 14px',
+    fontSize: '13px',
+    fontWeight: '600',
+    border: 'none',
+    cursor: 'pointer',
+    opacity: 0.7,
+    transition: 'all 0.2s ease',
+  },
+  // -------------------------
+
   controls: {
     position: 'absolute',
     left: 0,
@@ -136,13 +172,15 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const [isTorchOn, setIsTorchOn] = useState(false);
 
   const [facingMode, setFacingMode] = useState('environment');
+  
+  // --- NEW: Scan Type State ---
+  const [scanType, setScanType] = useState('appointment_letter');
 
-useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
 
     async function startCamera() {
       try {
-        // Reset states while the camera switches
         setStatus('starting-camera');
         setTorchAvailable(false); 
         setIsTorchOn(false);
@@ -198,9 +236,7 @@ useEffect(() => {
   }, [facingMode]);
 
   const toggleCamera = () => {
-    // If the camera is currently starting or sending, ignore the click
     if (status === 'starting-camera' || status === 'sending') return;
-    
     setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
   };
 
@@ -244,27 +280,23 @@ useEffect(() => {
       const imageDataUrl = captureCurrentFrame();
       setCapturedImage(imageDataUrl);
 
-      // 1. AWAIT the upload (wait for the database to save the image)
+      // --- UPDATED: Passing the selected scanType to backend ---
       await apiFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nhs_number: patient.nhs_number,
           image_data: imageDataUrl,
-          scan_type: 'appointment_letter',
+          scan_type: scanType, 
         }),
       });
 
-      // 2. FIRE AND FORGET the background processing 
-      // No 'await' here! The UI moves on instantly.
       apiFetch('/api/process-summaries', { 
         method: 'POST' 
       }).catch(err => {
-        // Catch silent errors so they don't break the React component
         console.error("Background summarization trigger failed:", err);
       });
 
-      // 3. Instantly show success to the user
       setStatus('sent');
       setTimeout(() => {
         setStatus('idle');
@@ -291,7 +323,7 @@ useEffect(() => {
     : status === 'sending' ? SCAN_MESSAGES[scanMsgIdx]
     : status === 'sent' ? 'Scan sent!'
     : status === 'error' ? 'Failed — try again'
-    : 'Point camera at your NHS letter';
+    : 'Point camera at your NHS document';
 
   if (!patient) {
     return (
@@ -330,6 +362,22 @@ useEffect(() => {
       <div style={s.topOverlay}>
         <p style={s.title}>Scan a document</p>
         <p style={s.subtitle}>Take a photo of an NHS letter or prescription</p>
+        
+        {/* --- NEW: Document Type Toggle --- */}
+        <div style={s.toggleContainer}>
+          <button 
+            style={scanType === 'appointment_letter' ? s.toggleBtnActive : s.toggleBtnInactive}
+            onClick={() => setScanType('appointment_letter')}
+          >
+            Appointment
+          </button>
+          <button 
+            style={scanType === 'prescription' ? s.toggleBtnActive : s.toggleBtnInactive}
+            onClick={() => setScanType('prescription')}
+          >
+            Prescription
+          </button>
+        </div>
       </div>
 
       {capturedImage && (
@@ -346,7 +394,7 @@ useEffect(() => {
           disabled={status === 'starting-camera' || status === 'sending'}
           style={{
             position: 'absolute',
-            left: '32px', // Placed on the left side
+            left: '32px',
             bottom: '24px', 
             width: '44px',
             height: '44px',
