@@ -89,17 +89,19 @@ def generate_appointment_summary(raw_text):
     prompt = f"""You are a medical assistant extracting information from an NHS letter.
 Read the following text and extract the specific appointment details.
 
-You MUST return the exact Markdown template below. Do not change the formatting, do not remove the bullet points, and do not add any conversational text before or after.
-If any of these details are missing, write "Not specified".
+You MUST return the exact Markdown template below. Do not change the formatting or remove the bullet points.
+If any details are missing, write "Not specified". Extract any instructions about what the patient needs to do or bring.
 
-For the "Directions" link, construct a Google Maps search URL format: `https://www.google.com/maps/search/?api=1&query=` followed by the extracted location name (replace spaces with plus signs '+'). If the location is "Not specified", do not create a link and simply write "Not specified".
-
-**Template:**
+**Essential Details:**
 * **Clinician/Department:** [Insert here]
 * **Date:** [Insert here]
 * **Time:** [Insert here]
 * **Location:** [Insert here]
-* **Directions:** [Map & Directions](https://www.google.com/maps/search/?api=1&query=[Insert+Location+With+Pluses+Here])
+
+**Extra Information:**
+* **Directions/Map:** [Insert any location instructions or map links here]
+* **What to Bring:** [Insert items to bring here]
+* **Important Notes:** [Insert any other crucial instructions here]
 
 Raw text:
 {raw_text}"""
@@ -248,6 +250,20 @@ def get_messages():
         return jsonify({"error": "Database unavailable"}), 500
     return jsonify({"messages": scans})
 
+@app.route('/api/messages/<msg_id>', methods=['DELETE'])
+def delete_message(msg_id):
+    try:
+        # Instruct Supabase to delete the row matching the ID
+        result = supabase.table(TABLE_SCANS).delete().eq("id", msg_id).execute()
+        
+        # Verify that something was actually deleted
+        if not result.data:
+            return jsonify({"error": "Message not found"}), 404
+            
+        return jsonify({"status": "ok", "message": "Deleted successfully"})
+    except Exception as e:
+        print(f"Supabase error in /api/messages/<id>: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
 
 # ─── STATIC FILE SERVING ─────────────────────────────────────────────────────
 
