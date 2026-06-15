@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { C } from '../styles/shared.js';
 
 const s = {
@@ -126,25 +126,52 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const uploadAbortRef = useRef(null);
+  const isMountedRef = useRef(true);
 
-  const [status, setStatus] = useState('starting-camera');
+  const [status, setStatus] = useState('starting-camera'); // starting-camera | idle | sending | sent | error | camera-error
   const [cameraError, setCameraError] = useState('');
   const [capturedImage, setCapturedImage] = useState(null);
   const [scanMsgIdx, setScanMsgIdx] = useState(0);
 
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
-
   const [facingMode, setFacingMode] = useState('environment');
+
+  const safeSetStatus = (value) => {
+    if (isMountedRef.current) setStatus(value);
+  };
+
+  const stopCurrentStream = useCallback(() => {
+    const stream = streamRef.current;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setTorchAvailable(false);
+    setIsTorchOn(false);
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function startCamera() {
       try {
-        setStatus('starting-camera');
-        setTorchAvailable(false); 
-        setIsTorchOn(false);
+        safeSetStatus('starting-camera');
+        setCameraError('');
+
+        // Ensure previous stream is closed before opening a new one
+        stopCurrentStream();
 
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error('Camera API is not available in this browser.');
@@ -155,7 +182,7 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
           audio: false,
         });
 
-        if (cancelled) {
+        if (cancelled || !isMountedRef.current) {
           stream.getTracks().forEach(track => track.stop());
           return;
         }
@@ -164,25 +191,30 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          await videoRef.current.play().catch(() => {});
         }
 
+        // Torch support check
         const track = stream.getVideoTracks()[0];
-        try {
-          const capabilities = track.getCapabilities();
-          if (capabilities.torch) {
-            setTorchAvailable(true);
+        if (track) {
+          try {
+            const capabilities = track.getCapabilities?.();
+            if (capabilities?.torch) {
+              setTorchAvailable(true);
+            }
+          } catch {
+            // Some browsers throw here; ignore safely
+            setTorchAvailable(false);
           }
-        } catch (e) {
-          console.log("Torch capabilities check not supported.");
         }
 
-        setStatus('idle');
+        safeSetStatus('idle');
       } catch (err) {
+        console.error('Camera start failed:', err);
         setCameraError(
           'Camera access failed. Check browser permissions and make sure you are using localhost or HTTPS.'
         );
-        setStatus('camera-error');
+        safeSetStatus('camera-error');
       }
     }
 
@@ -190,22 +222,23 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
 
     return () => {
       cancelled = true;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
+      stopCurrentStream();
     };
-  }, [facingMode]);
+  }, [facingMode, stopCurrentStream]);
 
-  const toggleCamera = () => {
+  const toggleCamera = useCallback(() => {
     if (status === 'starting-camera' || status === 'sending') return;
-    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
-  };
+    setFacingMode(prev => (prev === 'environment' ? 'user' : 'environment'));
+  }, [status]);
 
-  const captureCurrentFrame = () => {
+  const captureCurrentFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) {
+    if (!video || !canvas) {
+      throw new Error('Camera components are not ready.');
+    }
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
       throw new Error('Camera is not ready yet.');
     }
 
@@ -213,138 +246,126 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
     canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not acquire canvas context.');
+
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     return canvas.toDataURL('image/jpeg', 0.9);
-  };
+  }, []);
 
-  const toggleTorch = async () => {
-    if (!streamRef.current) return;
-    
-    const track = streamRef.current.getVideoTracks()[0];
+  const toggleTorch = useCallback(async () => {
+    const stream = streamRef.current;
+    if (!stream) return;
+
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+
     try {
       await track.applyConstraints({
-        advanced: [{ torch: !isTorchOn }]
+        advanced: [{ torch: !isTorchOn }],
       });
-      setIsTorchOn(!isTorchOn);
+      setIsTorchOn(prev => !prev);
     } catch (err) {
       console.error('Failed to toggle torch:', err);
     }
-  };
+  }, [isTorchOn]);
 
-  const handleShutter = async () => {
+  const handleShutter = useCallback(async () => {
+    if (!patient?.nhs_number || status === 'sending' || status === 'starting-camera') return;
 
-    if (!patient || status === 'sending') return;
-
-
-    setStatus('sending');
-
+    safeSetStatus('sending');
 
     try {
-
-
-      const imageDataUrl =
-        captureCurrentFrame();
-
-
+      const imageDataUrl = captureCurrentFrame();
       setCapturedImage(imageDataUrl);
 
-
+      // Abort any previous upload attempt
+      if (uploadAbortRef.current) uploadAbortRef.current.abort();
+      uploadAbortRef.current = new AbortController();
 
       await apiFetch('/api/scan', {
-
-        method:'POST',
-
-        headers:{
-          'Content-Type':'application/json'
-        },
-
-        body:JSON.stringify({
-
-          // Works for both:
-          // Patient -> own NHS number
-          // Carer -> selected patient's NHS number
-
-          nhs_number:
-            patient.nhs_number,
-
-
-          image_data:imageDataUrl,
-
-
-          scan_type:'auto_detect'
-
-        })
-
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nhs_number: patient.nhs_number,
+          image_data: imageDataUrl,
+          scan_type: 'auto_detect',
+        }),
+        signal: uploadAbortRef.current.signal,
       });
 
+      // Fire-and-forget processing
+      apiFetch('/api/process-summaries', { method: 'POST' }).catch(console.error);
 
+      safeSetStatus('sent');
 
-      apiFetch('/api/process-summaries',{
+      setTimeout(() => {
+        if (!isMountedRef.current) return;
+        safeSetStatus('idle');
+        onNavigate?.('messages');
+      }, 1600);
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        console.warn('Upload aborted');
+        return;
+      }
 
-        method:'POST'
+      console.error('Upload failed:', err);
+      safeSetStatus('error');
 
-      }).catch(console.error);
-
-
-
-      setStatus('sent');
-
-
-      setTimeout(()=>{
-
-        setStatus('idle');
-
-        onNavigate('messages');
-
-      },2000);
-
-
-
-    } catch(err){
-
-
-      console.error(
-        "Upload failed:",
-        err
-      );
-
-
-      setStatus('error');
-
-
-      setTimeout(
-        ()=>setStatus('idle'),
-        2500
-      );
-
-
+      setTimeout(() => {
+        if (!isMountedRef.current) return;
+        safeSetStatus('idle');
+      }, 2200);
     }
-
-  };
+  }, [apiFetch, captureCurrentFrame, onNavigate, patient?.nhs_number, status]);
 
   useEffect(() => {
     if (status !== 'sending') return;
     setScanMsgIdx(0);
+
     const id = setInterval(() => {
       setScanMsgIdx(i => (i + 1) % SCAN_MESSAGES.length);
-    }, 2000);
+    }, 1800);
+
     return () => clearInterval(id);
   }, [status]);
 
-  const feedbackText =
-    status === 'starting-camera' ? 'Starting camera…'
-    : status === 'sending' ? SCAN_MESSAGES[scanMsgIdx]
-    : status === 'sent' ? 'Scan sent!'
-    : status === 'error' ? 'Failed — try again'
-    : 'Point camera at your NHS document';
+  useEffect(() => {
+    return () => {
+      if (uploadAbortRef.current) uploadAbortRef.current.abort();
+      stopCurrentStream();
+    };
+  }, [stopCurrentStream]);
 
-  if (!patient) {
+  const feedbackText =
+    status === 'starting-camera'
+      ? 'Starting camera…'
+      : status === 'sending'
+      ? SCAN_MESSAGES[scanMsgIdx]
+      : status === 'sent'
+      ? 'Scan sent!'
+      : status === 'error'
+      ? 'Failed — try again'
+      : 'Point camera at your NHS document';
+
+  if (patient === null) {
     return (
       <div style={s.container}>
         <div style={s.errorCard}>
-          <p style={s.errorTitle}>Not connected</p>
-          <p>Could not connect to the NHS database.</p>
+          <p style={s.errorTitle}>Loading...</p>
+          <p>Connecting to secure record...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!patient || !patient.nhs_number) {
+    return (
+      <div style={s.container}>
+        <div style={s.errorCard}>
+          <p style={s.errorTitle}>No patient linked</p>
+          <p>No NHS record linked to this account.</p>
         </div>
       </div>
     );
@@ -361,16 +382,11 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
     );
   }
 
+  const controlsDisabled = status === 'starting-camera' || status === 'sending';
+
   return (
     <div style={s.container}>
-      <video
-        ref={videoRef}
-        style={s.video}
-        autoPlay
-        playsInline
-        muted
-      />
-
+      <video ref={videoRef} style={s.video} autoPlay playsInline muted />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       <div style={s.topOverlay}>
@@ -379,21 +395,17 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
       </div>
 
       {capturedImage && (
-        <img
-          src={capturedImage}
-          alt="Last captured scan"
-          style={s.preview}
-        />
+        <img src={capturedImage} alt="Last captured scan" style={s.preview} />
       )}
 
       <div style={s.controls}>
         <button
           onClick={toggleCamera}
-          disabled={status === 'starting-camera' || status === 'sending'}
+          disabled={controlsDisabled}
           style={{
             position: 'absolute',
             left: '32px',
-            bottom: '24px', 
+            bottom: '24px',
             width: '44px',
             height: '44px',
             borderRadius: '50%',
@@ -403,22 +415,24 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'pointer',
+            cursor: controlsDisabled ? 'not-allowed' : 'pointer',
             zIndex: 10,
             transition: 'opacity 0.2s',
-            opacity: (status === 'starting-camera' || status === 'sending') ? 0.5 : 1,
+            opacity: controlsDisabled ? 0.5 : 1,
           }}
           aria-label="Switch camera"
         >
           <span style={{ fontSize: '20px' }}>🔄</span>
         </button>
+
         {torchAvailable && (
           <button
             onClick={toggleTorch}
+            disabled={controlsDisabled}
             style={{
               position: 'absolute',
-              right: '32px', 
-              bottom: '24px', 
+              right: '32px',
+              bottom: '24px',
               width: '44px',
               height: '44px',
               borderRadius: '50%',
@@ -428,32 +442,31 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: controlsDisabled ? 'not-allowed' : 'pointer',
               zIndex: 10,
+              opacity: controlsDisabled ? 0.5 : 1,
             }}
             aria-label="Toggle flashlight"
           >
             <span style={{ fontSize: '20px' }}>{isTorchOn ? '💡' : '🔦'}</span>
           </button>
         )}
+
         <button
           style={{
             ...s.shutterOuter,
             transform: status === 'sending' ? 'scale(0.92)' : 'scale(1)',
+            opacity: controlsDisabled ? 0.8 : 1,
+            cursor: controlsDisabled ? 'not-allowed' : 'pointer',
           }}
           onClick={handleShutter}
-          disabled={status === 'sending' || status === 'starting-camera'}
+          disabled={controlsDisabled}
           aria-label="Take photo and send scan"
         >
           <div style={status === 'sending' ? s.shutterInnerActive : s.shutterInner} />
         </button>
 
-        <p
-          style={{
-            ...s.feedback,
-            color: status === 'error' ? '#FFB4A8' : C.white,
-          }}
-        >
+        <p style={{ ...s.feedback, color: status === 'error' ? '#FFB4A8' : C.white }}>
           {feedbackText}
         </p>
       </div>

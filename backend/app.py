@@ -6,6 +6,7 @@ import threading
 from functools import wraps
 from datetime import datetime, timezone
 from concurrent import futures as cf
+
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -70,33 +71,32 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 _vision_client = vision.ImageAnnotatorClient(credentials=_gcp_credentials)
 
+# Optional admin gate for summary batch endpoint
+SUMMARY_ADMIN_USER_IDS = set(filter(None, os.environ.get("SUMMARY_ADMIN_USER_IDS", "").split(",")))
 
 # ─── SECURITY DECORATOR ──────────────────────────────────────────────────────
 
 def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
             return jsonify({"error": "Missing or invalid token"}), 401
-            
-        token = auth_header.split(' ')[1]
-        
+
+        token = auth_header.split(" ")[1]
+
         try:
-            # Verify the JWT natively with Supabase
             user_response = supabase.auth.get_user(token)
             user = user_response.user
             if not user:
                 return jsonify({"error": "Invalid token"}), 401
-                
-            # Pass the secure user object into the API route
+
             return f(user, *args, **kwargs)
         except Exception as e:
             print(f"Auth error: {e}", file=sys.stderr)
             return jsonify({"error": "Unauthorized"}), 401
-            
-    return decorated_function
 
+    return decorated_function
 
 # ─── HELPER FUNCTIONS ────────────────────────────────────────────────────────
 
@@ -115,18 +115,18 @@ def perform_google_ocr(image_base64):
     return annotation.text if annotation else ""
 
 def classify_document(raw_text):
-    prompt = f"""You are an AI document classifier for the NHS. 
+    prompt = f"""You are an AI document classifier for the NHS.
 Read the following text and determine if it is an 'appointment' letter or a 'prescription'/'medication' document.
 Reply with EXACTLY the word 'appointment' or 'prescription' and absolutely nothing else.
 
 Raw text:
 {raw_text}"""
     response = _gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-    result = response.text.strip().lower()
-    
-    if 'prescription' in result:
-        return 'prescription'
-    return 'appointment_letter'
+    result = (response.text or "").strip().lower()
+
+    if "prescription" in result:
+        return "prescription"
+    return "appointment_letter"
 
 def generate_appointment_summary(raw_text):
     prompt = f"""You are a medical assistant extracting information from an NHS letter.
@@ -176,100 +176,113 @@ Raw text:
 def _process_single_scan(scan):
     raw_text = scan.get("raw_text")
     scan_id = scan.get("id")
-    
+
     if not raw_text:
         return 0
     try:
         detected_type = classify_document(raw_text)
-        
+
         if detected_type == "prescription":
             summary = generate_prescription_summary(raw_text)
         else:
             summary = generate_appointment_summary(raw_text)
-            
+
         supabase.table(TABLE_SCANS)\
             .update({
-                "scan_type": detected_type.replace('_', ' '),
-                "summary_text": summary, 
+                "scan_type": detected_type,  # keep canonical machine value
+                "summary_text": summary,
                 "summary_status": "completed"
             })\
             .eq("id", scan_id)\
             .execute()
         return 1
-    except Exception:
+    except Exception as e:
+        print(f"Summary processing failed for scan {scan_id}: {e}", file=sys.stderr)
         return 0
 
-
 # ─── ROLE VERIFICATION HELPER ────────────────────────────────────────────────
+
 def verify_access_to_patient(auth_user_id, target_nhs):
     """
-    Returns True if the auth_user_id is the patient themselves, 
+    Returns True if the auth_user_id is the patient themselves,
     OR a carer linked to that specific patient.
     """
-    # 1. Are they the patient?
-    patient_check = supabase.table(TABLE_PATIENTS).select("nhs_number").eq("auth_user_id", auth_user_id).eq("nhs_number", target_nhs).execute().data
+    patient_check = supabase.table(TABLE_PATIENTS)\
+        .select("nhs_number")\
+        .eq("auth_user_id", auth_user_id)\
+        .eq("nhs_number", target_nhs)\
+        .execute().data
     if patient_check:
         return True
-        
-    # 2. Are they an authorized carer?
-    carer_check = supabase.table("carers").select("id").eq("auth_user_id", auth_user_id).execute().data
+
+    carer_check = supabase.table("carers")\
+        .select("id")\
+        .eq("auth_user_id", auth_user_id)\
+        .execute().data
     if carer_check:
-        link_check = supabase.table("carer_patient_links").select("*").eq("carer_id", carer_check[0]["id"]).eq("patient_nhs_number", target_nhs).execute().data
+        link_check = supabase.table("carer_patient_links")\
+            .select("*")\
+            .eq("carer_id", carer_check[0]["id"])\
+            .eq("patient_nhs_number", target_nhs)\
+            .execute().data
         if link_check:
             return True
-            
+
     return False
 
+# ─── API ROUTES ──────────────────────────────────────────────────────────────
 
-# ─── SECURE API ROUTES ───────────────────────────────────────────────────────
-
-@app.route('/api/health', methods=['GET'])
+@app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
 
-
-@app.route('/api/me', methods=['GET'])
+@app.route("/api/me", methods=["GET"])
 @require_auth
 def get_me(user):
     try:
-        # 1. Check if the user is a Patient
         patient_record = supabase.table(TABLE_PATIENTS).select("*").eq("auth_user_id", user.id).execute().data
-        
+
         if patient_record:
             nhs = patient_record[0]["nhs_number"]
             appointments = supabase.table(TABLE_APPOINTMENTS).select("*").eq("nhs_number", nhs).execute().data
             prescriptions = supabase.table(TABLE_PRESCRIPTIONS).select("*").eq("nhs_number", nhs).execute().data
-            
+
             for p in prescriptions:
                 p["repeatsLeft"] = p.pop("repeats_left", 0)
-                
+
             return jsonify({
                 "role": "patient",
                 "patient_info": {"name": patient_record[0]["name"], "nhs_number": nhs},
-                "appointments": appointments,
-                "prescriptions": prescriptions,
-                "managed_patients": [] 
+                "appointments": appointments or [],
+                "prescriptions": prescriptions or [],
+                "managed_patients": []
             })
 
-        # 2. Check if the user is a Carer
         carer_record = supabase.table("carers").select("*").eq("auth_user_id", user.id).execute().data
-        
         if carer_record:
             carer_id = carer_record[0]["id"]
-            
-            # Find all patients this carer is linked to
-            links = supabase.table("carer_patient_links").select("patient_nhs_number").eq("carer_id", carer_id).execute().data
+            links = supabase.table("carer_patient_links")\
+                .select("patient_nhs_number")\
+                .eq("carer_id", carer_id)\
+                .execute().data
             nhs_numbers = [link["patient_nhs_number"] for link in links]
-            
+
             if not nhs_numbers:
-                return jsonify({"role": "carer", "carer_info": carer_record[0], "managed_patients": []})
-                
-            managed_patients = supabase.table(TABLE_PATIENTS).select("*").in_("nhs_number", nhs_numbers).execute().data
-            
+                return jsonify({
+                    "role": "carer",
+                    "carer_info": carer_record[0],
+                    "managed_patients": []
+                })
+
+            managed_patients = supabase.table(TABLE_PATIENTS)\
+                .select("*")\
+                .in_("nhs_number", nhs_numbers)\
+                .execute().data
+
             return jsonify({
                 "role": "carer",
                 "carer_info": carer_record[0],
-                "managed_patients": managed_patients, 
+                "managed_patients": managed_patients or []
             })
 
         return jsonify({"error": "Profile not completed"}), 404
@@ -278,8 +291,40 @@ def get_me(user):
         print(f"Supabase error in /api/me: {e}", file=sys.stderr)
         return jsonify({"error": "Database unavailable"}), 500
 
+@app.route("/api/patient-overview", methods=["GET"])
+@require_auth
+def get_patient_overview(user):
+    target_nhs = request.args.get("nhs_number")
+    if not target_nhs:
+        return jsonify({"error": "Missing nhs_number"}), 400
 
-@app.route('/api/scan', methods=['POST'])
+    try:
+        if not verify_access_to_patient(user.id, target_nhs):
+            return jsonify({"error": "Unauthorized"}), 403
+
+        appointments = supabase.table(TABLE_APPOINTMENTS)\
+            .select("*")\
+            .eq("nhs_number", target_nhs)\
+            .execute().data
+
+        prescriptions = supabase.table(TABLE_PRESCRIPTIONS)\
+            .select("*")\
+            .eq("nhs_number", target_nhs)\
+            .execute().data
+
+        for p in prescriptions:
+            p["repeatsLeft"] = p.pop("repeats_left", 0)
+
+        return jsonify({
+            "nhs_number": target_nhs,
+            "appointments": appointments or [],
+            "prescriptions": prescriptions or [],
+        })
+    except Exception as e:
+        print(f"Supabase error in /api/patient-overview: {e}", file=sys.stderr)
+        return jsonify({"error": "Database unavailable"}), 500
+
+@app.route("/api/scan", methods=["POST"])
 @require_auth
 def log_scan(user):
     data = request.get_json()
@@ -289,12 +334,10 @@ def log_scan(user):
     target_nhs = data["nhs_number"]
 
     try:
-        # Role verification
         if not verify_access_to_patient(user.id, target_nhs):
             return jsonify({"error": "Unauthorized to upload for this patient"}), 403
 
         extracted_text = perform_google_ocr(data["image_data"])
-
         if not extracted_text.strip():
             return jsonify({"error": "No clear text could be scanned from this image."}), 422
 
@@ -317,22 +360,25 @@ def log_scan(user):
             "raw_text": extracted_text,
             "scan_type": data.get("scan_type", DEFAULT_SCAN_TYPE),
             "summary_status": "pending",
-            "uploaded_by_auth_id": user.id  # Tracking exactly who uploaded it
+            "uploaded_by_auth_id": user.id
         }).execute()
-        
+
         if result.data:
             threading.Thread(target=_process_single_scan, args=(result.data[0],), daemon=True).start()
-            
+
     except Exception as e:
         print(f"OCR/Database error in /api/scan: {e}", file=sys.stderr)
         return jsonify({"error": "Failed to extract text or save document"}), 500
 
     return jsonify({"status": "ok", "message": "Scan saved and queued for summary."})
 
-
-@app.route('/api/process-summaries', methods=['POST'])
+@app.route("/api/process-summaries", methods=["POST"])
 @require_auth
 def process_pending_summaries(user):
+    # Optional lock-down (recommended)
+    if SUMMARY_ADMIN_USER_IDS and user.id not in SUMMARY_ADMIN_USER_IDS:
+        return jsonify({"error": "Forbidden"}), 403
+
     try:
         pending_scans = supabase.table(TABLE_SCANS)\
             .select("*")\
@@ -350,13 +396,11 @@ def process_pending_summaries(user):
             "message": f"Successfully processed {processed_count} summaries.",
             "processed_count": processed_count
         })
-
     except Exception as e:
         print(f"Error processing summaries: {e}", file=sys.stderr)
         return jsonify({"error": f"Failed to process summaries: {str(e)}"}), 500
 
-
-@app.route('/api/event', methods=['POST'])
+@app.route("/api/event", methods=["POST"])
 @require_auth
 def log_event(user):
     data = request.get_json()
@@ -368,71 +412,74 @@ def log_event(user):
             "metadata": data.get("metadata"),
             "auth_user_id": user.id
         })
-    except Exception:
+    except Exception as e:
+        print(f"Database error in /api/event: {e}", file=sys.stderr)
         return jsonify({"error": "Database error"}), 500
     return jsonify({"status": "ok"})
 
-
-@app.route('/api/messages', methods=['GET'])
+@app.route("/api/messages", methods=["GET"])
 @require_auth
 def get_messages(user):
     target_nhs = request.args.get("nhs_number")
-    
+
     try:
         if not target_nhs:
-            # Assume a patient is asking for their own records
-            patients = supabase.table(TABLE_PATIENTS).select("nhs_number").eq("auth_user_id", user.id).limit(1).execute().data
+            patients = supabase.table(TABLE_PATIENTS)\
+                .select("nhs_number")\
+                .eq("auth_user_id", user.id)\
+                .limit(1)\
+                .execute().data
             if not patients:
                 return jsonify({"messages": []})
             target_nhs = patients[0]["nhs_number"]
-            
-        # Role verification
+
         if not verify_access_to_patient(user.id, target_nhs):
             return jsonify({"error": "Unauthorized"}), 403
-            
-        scans = supabase.table(TABLE_SCANS).select("*").eq("nhs_number", target_nhs).order("created_at", desc=True).execute().data
-        return jsonify({"messages": scans})
-        
+
+        scans = supabase.table(TABLE_SCANS)\
+            .select("*")\
+            .eq("nhs_number", target_nhs)\
+            .order("created_at", desc=True)\
+            .execute().data
+
+        return jsonify({"messages": scans or []})
+
     except Exception as e:
         print(f"Supabase error in /api/messages: {e}", file=sys.stderr)
         return jsonify({"error": "Database unavailable"}), 500
 
-
-@app.route('/api/messages/<msg_id>', methods=['DELETE'])
+@app.route("/api/messages/<msg_id>", methods=["DELETE"])
 @require_auth
 def delete_message(user, msg_id):
     try:
-        # First find the message to see who it belongs to
-        msg = supabase.table(TABLE_SCANS).select("nhs_number").eq("id", msg_id).execute().data
+        msg = supabase.table(TABLE_SCANS)\
+            .select("nhs_number")\
+            .eq("id", msg_id)\
+            .execute().data
         if not msg:
             return jsonify({"error": "Message not found"}), 404
-            
+
         target_nhs = msg[0]["nhs_number"]
-        
-        # Verify the user has rights to manage this patient's records
         if not verify_access_to_patient(user.id, target_nhs):
             return jsonify({"error": "Unauthorized"}), 403
-        
-        # Delete the scan
+
         supabase.table(TABLE_SCANS).delete().eq("id", msg_id).execute()
         return jsonify({"status": "ok", "message": "Deleted successfully"})
-        
     except Exception as e:
         print(f"Supabase error in /api/messages/<id>: {e}", file=sys.stderr)
         return jsonify({"error": "Database unavailable"}), 500
 
 # ─── STATIC FILE SERVING ─────────────────────────────────────────────────────
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
 def serve(path):
     static = app.static_folder
     if not static or not os.path.isdir(static):
         return jsonify({"error": "Not found"}), 404
     if path and os.path.exists(os.path.join(static, path)):
         return send_from_directory(static, path)
-    return send_from_directory(static, 'index.html')
+    return send_from_directory(static, "index.html")
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True, port=8000)
