@@ -3,11 +3,23 @@ import { C } from './styles/shared.js';
 import HomeTab from './tabs/HomeTab.jsx';
 import PhotoTab from './tabs/PhotoTab.jsx';
 import MessagesTab from './tabs/MessagesTab.jsx';
+import LoginScreen from './components/LoginScreen.jsx';
+import { supabase } from './supabaseClient.js';
 
 const API_BASE_URL = import.meta.env.DEV ? 'http://127.0.0.1:8000' : '';
 
+// Automatically grabs the token and attaches it to every API request!
 export async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, options);
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   if (!res.ok) throw new Error(res.statusText);
   return res.json();
 }
@@ -109,9 +121,20 @@ const s = {
     fontSize: '16px',
     color: C.primary,
   },
+  logoutBtn: {
+    position: 'absolute',
+    top: '12px',
+    right: '16px',
+    background: 'none',
+    border: 'none',
+    color: C.primary,
+    fontWeight: '600',
+    cursor: 'pointer',
+    zIndex: 50
+  }
 };
 
-// ── App ──────────────────────────────────────────────────────────────────────
+// ── Main App (Authenticated) ──────────────────────────────────────────────────
 
 const TABS = [
   { id: 'home', label: 'Home', Icon: IconHome },
@@ -119,7 +142,7 @@ const TABS = [
   { id: 'messages', label: 'Communications', Icon: IconMail },
 ];
 
-export default function App() {
+function MainApp({ session }) {
   const [activeTab, setActiveTab] = useState('photo');
   const [isLoading, setIsLoading] = useState(true);
   const [patient, setPatient] = useState(null);
@@ -133,7 +156,7 @@ export default function App() {
         setAppointments(data.appointments);
         setPrescriptions(data.prescriptions);
       })
-      .catch(() => {})
+      .catch((err) => console.error("Failed to fetch user data", err))
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -144,6 +167,8 @@ export default function App() {
       body: JSON.stringify({ event_type: eventType, metadata }),
     }).catch(() => {});
 
+  const handleLogout = () => supabase.auth.signOut();
+
   const tabContent = {
     home: <HomeTab patient={patient} appointments={appointments} prescriptions={prescriptions} logEvent={logEvent} />,
     photo: <PhotoTab patient={patient} apiFetch={apiFetch} onNavigate={setActiveTab} />,
@@ -152,6 +177,11 @@ export default function App() {
 
   return (
     <div style={s.shell}>
+      {/* Temporary generic logout button placed out of the way for testing */}
+      {activeTab !== 'photo' && (
+        <button style={s.logoutBtn} onClick={handleLogout}>Log Out</button>
+      )}
+
       <main style={s.mainContent}>
         {isLoading
           ? <p style={s.loading}>Connecting to NHS Database…</p>
@@ -178,4 +208,42 @@ export default function App() {
       </nav>
     </div>
   );
+}
+
+// ── Auth Traffic Controller ───────────────────────────────────────────────────
+
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Check for existing session on load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsLoading(false);
+    });
+
+    // 2. Listen for login/logout events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: '100svh', backgroundColor: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={s.loading}>Securing connection...</p>
+      </div>
+    );
+  }
+
+  // Bouncer: Force login if no session exists
+  if (!session) {
+    return <LoginScreen />;
+  }
+
+  // Let them in
+  return <MainApp session={session} />;
 }

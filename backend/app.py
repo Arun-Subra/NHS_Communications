@@ -3,6 +3,7 @@ import sys
 import json
 import base64
 import threading
+from functools import wraps  # <-- NEW: Needed for our security decorator
 from datetime import datetime, timezone
 from concurrent import futures as cf
 from dotenv import load_dotenv
@@ -68,6 +69,34 @@ _gemini_client = genai.Client(
 GEMINI_MODEL = "gemini-2.5-flash"
 
 _vision_client = vision.ImageAnnotatorClient(credentials=_gcp_credentials)
+
+
+# ─── SECURITY DECORATOR ──────────────────────────────────────────────────────
+
+def require_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Missing or invalid token"}), 401
+            
+        token = auth_header.split(' ')[1]
+        
+        try:
+            # Verify the JWT natively with Supabase
+            user_response = supabase.auth.get_user(token)
+            user = user_response.user
+            if not user:
+                return jsonify({"error": "Invalid token"}), 401
+                
+            # Pass the secure user object into the API route
+            return f(user, *args, **kwargs)
+        except Exception as e:
+            print(f"Auth error: {e}", file=sys.stderr)
+            return jsonify({"error": "Unauthorized"}), 401
+            
+    return decorated_function
+
 
 # ─── HELPER FUNCTIONS ────────────────────────────────────────────────────────
 
@@ -181,13 +210,17 @@ def health():
 
 
 @app.route('/api/me', methods=['GET'])
-def get_me():
+@require_auth
+def get_me(user):
     try:
-        patients = supabase.table(TABLE_PATIENTS).select("*").limit(1).execute().data
+        # SECURED: Fetch only the patient record linked to this logged-in user
+        patients = supabase.table(TABLE_PATIENTS).select("*").eq("auth_user_id", user.id).limit(1).execute().data
         if not patients:
-            return jsonify({"error": "No patient found"}), 404
+            return jsonify({"error": "No patient found for this account"}), 404
 
         nhs = patients[0]["nhs_number"]
+        
+        # SECURED: Only fetch appointments and prescriptions for this specific NHS number
         appointments = supabase.table(TABLE_APPOINTMENTS).select("*").eq("nhs_number", nhs).execute().data
         prescriptions = supabase.table(TABLE_PRESCRIPTIONS).select("*").eq("nhs_number", nhs).execute().data
     except Exception as e:
@@ -205,7 +238,8 @@ def get_me():
 
 
 @app.route('/api/scan', methods=['POST'])
-def log_scan():
+@require_auth
+def log_scan(user):
     data = request.get_json()
     if data is None:
         return jsonify({"error": "Request body required"}), 400
@@ -215,6 +249,11 @@ def log_scan():
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
     try:
+        # Extra Security Check: Ensure the user actually owns this NHS number
+        patients = supabase.table(TABLE_PATIENTS).select("nhs_number").eq("auth_user_id", user.id).limit(1).execute().data
+        if not patients or patients[0]["nhs_number"] != data["nhs_number"]:
+            return jsonify({"error": "Unauthorized to upload for this patient"}), 403
+
         extracted_text = perform_google_ocr(data["image_data"])
 
         if not extracted_text.strip():
@@ -250,7 +289,8 @@ def log_scan():
 
 
 @app.route('/api/process-summaries', methods=['POST'])
-def process_pending_summaries():
+@require_auth
+def process_pending_summaries(user):
     try:
         pending_scans = supabase.table(TABLE_SCANS)\
             .select("*")\
@@ -275,7 +315,8 @@ def process_pending_summaries():
 
 
 @app.route('/api/event', methods=['POST'])
-def log_event():
+@require_auth
+def log_event(user):
     data = request.get_json()
     if data is None:
         return jsonify({"error": "Request body required"}), 400
@@ -285,6 +326,7 @@ def log_event():
         _insert_record(TABLE_EVENTS, {
             "event_type": data["event_type"],
             "metadata": data.get("metadata"),
+            "auth_user_id": user.id  # SECURED: Track exactly who fired the event
         })
     except Exception:
         return jsonify({"error": "Database error"}), 500
@@ -292,21 +334,37 @@ def log_event():
 
 
 @app.route('/api/messages', methods=['GET'])
-def get_messages():
+@require_auth
+def get_messages(user):
     try:
-        scans = supabase.table(TABLE_SCANS).select("*").order("created_at", desc=True).execute().data
+        # SECURED: Get the user's NHS number, then fetch ONLY their communications
+        patients = supabase.table(TABLE_PATIENTS).select("nhs_number").eq("auth_user_id", user.id).limit(1).execute().data
+        if not patients:
+            return jsonify({"messages": []})
+            
+        nhs = patients[0]["nhs_number"]
+        scans = supabase.table(TABLE_SCANS).select("*").eq("nhs_number", nhs).order("created_at", desc=True).execute().data
     except Exception as e:
         print(f"Supabase error in /api/messages: {e}", file=sys.stderr)
         return jsonify({"error": "Database unavailable"}), 500
     return jsonify({"messages": scans})
 
 @app.route('/api/messages/<msg_id>', methods=['DELETE'])
-def delete_message(msg_id):
+@require_auth
+def delete_message(user, msg_id):
     try:
-        result = supabase.table(TABLE_SCANS).delete().eq("id", msg_id).execute()
+        # SECURED: Make sure they aren't trying to delete someone else's message
+        patients = supabase.table(TABLE_PATIENTS).select("nhs_number").eq("auth_user_id", user.id).limit(1).execute().data
+        if not patients:
+            return jsonify({"error": "Unauthorized"}), 403
+            
+        nhs = patients[0]["nhs_number"]
+        
+        # Only delete if the scan belongs to this NHS number
+        result = supabase.table(TABLE_SCANS).delete().eq("id", msg_id).eq("nhs_number", nhs).execute()
         
         if not result.data:
-            return jsonify({"error": "Message not found"}), 404
+            return jsonify({"error": "Message not found or unauthorized"}), 404
             
         return jsonify({"status": "ok", "message": "Deleted successfully"})
     except Exception as e:

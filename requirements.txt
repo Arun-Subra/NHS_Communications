@@ -5,3 +5,4 @@ supabase
 gunicorn
 google-cloud-vision
 google-genai
+google-auth
