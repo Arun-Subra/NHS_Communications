@@ -92,7 +92,10 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export default function MessagesTab({ apiFetch }) {
+export default function MessagesTab({
+  apiFetch,
+  patient
+}) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -102,26 +105,54 @@ export default function MessagesTab({ apiFetch }) {
   const [expandedMsg, setExpandedMsg] = useState(null);
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
 
-  useEffect(() => {
-    let intervalId;
+useEffect(() => {
 
-    const fetchMessages = () => {
-      apiFetch('/api/messages')
-        .then(data => {
-          const msgs = data.messages ?? [];
-          setMessages(msgs);
-          if (msgs.length > 0 && msgs.every(m => m.summary_text)) {
-            clearInterval(intervalId);
-          }
-        })
-        .catch(() => { })
-        .finally(() => setLoading(false));
-    };
+let intervalId;
 
-    fetchMessages();
-    intervalId = setInterval(fetchMessages, 3000);
-    return () => clearInterval(intervalId);
-  }, [apiFetch]);
+
+const fetchMessages = () => {
+
+apiFetch('/api/messages')
+.then(data => {
+
+const msgs =
+data.messages ?? [];
+
+setMessages(msgs);
+
+
+if(
+ msgs.length > 0 &&
+ msgs.every(
+  m=>m.summary_text
+ )
+){
+
+clearInterval(intervalId);
+
+}
+
+})
+.catch(()=>{})
+.finally(
+()=>setLoading(false)
+);
+
+
+};
+
+
+fetchMessages();
+
+
+intervalId =
+setInterval(fetchMessages,3000);
+
+
+return ()=>clearInterval(intervalId);
+
+
+},[apiFetch]);
 
   const displayedMessages = useMemo(() => {
     let result = [...messages];
@@ -314,7 +345,13 @@ export default function MessagesTab({ apiFetch }) {
       )}
 
       {messages.length === 0
-        ? <p style={s.empty}>No communications yet. Scan a document to upload one.</p>
+        ? <p style={s.empty}>{
+patient
+?
+`No communications yet for ${patient.name}. Scan a document to upload one.`
+:
+'No patient selected.'
+}</p>
         : displayedMessages.length === 0
           ? <p style={s.empty}>No results found for "{searchQuery}".</p>
           : (

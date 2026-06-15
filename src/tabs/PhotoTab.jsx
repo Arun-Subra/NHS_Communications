@@ -233,41 +233,94 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
   };
 
   const handleShutter = async () => {
+
     if (!patient || status === 'sending') return;
+
 
     setStatus('sending');
 
+
     try {
-      const imageDataUrl = captureCurrentFrame();
+
+
+      const imageDataUrl =
+        captureCurrentFrame();
+
+
       setCapturedImage(imageDataUrl);
 
-      // Tell the backend to figure out what type of document this is automatically
+
+
       await apiFetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nhs_number: patient.nhs_number,
-          image_data: imageDataUrl,
-          scan_type: 'auto_detect',
-        }),
+
+        method:'POST',
+
+        headers:{
+          'Content-Type':'application/json'
+        },
+
+        body:JSON.stringify({
+
+          // Works for both:
+          // Patient -> own NHS number
+          // Carer -> selected patient's NHS number
+
+          nhs_number:
+            patient.nhs_number,
+
+
+          image_data:imageDataUrl,
+
+
+          scan_type:'auto_detect'
+
+        })
+
       });
 
-      apiFetch('/api/process-summaries', { 
-        method: 'POST' 
-      }).catch(err => {
-        console.error("Background summarization trigger failed:", err);
-      });
+
+
+      apiFetch('/api/process-summaries',{
+
+        method:'POST'
+
+      }).catch(console.error);
+
+
 
       setStatus('sent');
-      setTimeout(() => {
+
+
+      setTimeout(()=>{
+
         setStatus('idle');
+
         onNavigate('messages');
-      }, 2000);
-    } catch (err) {
-      console.error("Upload failed:", err);
+
+      },2000);
+
+
+
+    } catch(err){
+
+
+      console.error(
+        "Upload failed:",
+        err
+      );
+
+
       setStatus('error');
-      setTimeout(() => setStatus('idle'), 2500);
+
+
+      setTimeout(
+        ()=>setStatus('idle'),
+        2500
+      );
+
+
     }
+
   };
 
   useEffect(() => {

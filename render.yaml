@@ -8,9 +8,9 @@ services:
     startCommand: gunicorn backend.app:app --bind 0.0.0.0:$PORT
     plan: free
     envVars:
-      - key: SUPABASE_URL
+      - key: VITE_SUPABASE_URL
         sync: false
-      - key: SUPABASE_KEY
+      - key: VITE_SUPABASE_KEY
         sync: false
       - key: GOOGLE_CLOUD_PROJECT
         sync: false
