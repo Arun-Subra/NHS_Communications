@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { C, sharedStyles } from '../styles/shared.js';
+import { supabase } from '../supabaseClient.js';
 
 const s = {
   ...sharedStyles,
@@ -92,12 +93,7 @@ const s = {
     boxShadow: '0 4px 12px rgba(0,102,204,0.3)',
   },
 
-  actionSheetOverlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 10,
-    borderRadius: '12px',
-  },
+  actionSheetOverlay: { position: 'fixed', inset: 0, zIndex: 10, borderRadius: '12px' },
   actionSheet: {
     position: 'absolute',
     bottom: '100%',
@@ -172,66 +168,148 @@ function escapeICS(value = '') {
 
 function parseDateTime(dateStr, timeStr) {
   if (!dateStr || dateStr === 'Not specified') return null;
-  const fallbackTime = !timeStr || timeStr === 'Not specified' ? '09:00' : timeStr;
-  const parsed = new Date(`${dateStr} ${fallbackTime}`);
+  const safeTime = !timeStr || timeStr === 'Not specified' ? '09:00' : timeStr;
+  const parsed = new Date(`${dateStr} ${safeTime}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export default function MessagesTab({ activePatientNhs, apiFetch }) {
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [expandedMsg, setExpandedMsg] = useState(null);
   const [showCalendarMenu, setShowCalendarMenu] = useState(false);
 
-  // Reset view state when switching patient
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+
+  const fallbackPollRef = useRef(null);
+  const channelRef = useRef(null);
+
+  const clearFallbackPoll = () => {
+    if (fallbackPollRef.current) {
+      clearInterval(fallbackPollRef.current);
+      fallbackPollRef.current = null;
+    }
+  };
+
+  const upsertMessage = useCallback((row) => {
+    if (!row?.id) return;
+    setMessages(prev => {
+      const idx = prev.findIndex(m => m.id === row.id);
+      if (idx === -1) return [row, ...prev];
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], ...row };
+      return copy;
+    });
+  }, []);
+
+  const removeMessage = useCallback((id) => {
+    if (!id) return;
+    setMessages(prev => prev.filter(m => m.id !== id));
+    setExpandedMsg(prev => (prev?.id === id ? null : prev));
+  }, []);
+
+  const fetchMessages = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!activePatientNhs) {
+        setMessages([]);
+        setInitialLoading(false);
+        return;
+      }
+
+      try {
+        if (silent) setIsRefreshing(true);
+        else setInitialLoading(true);
+
+        const data = await apiFetch(`/api/messages?nhs_number=${encodeURIComponent(activePatientNhs)}`);
+        setMessages(Array.isArray(data?.messages) ? data.messages : []);
+      } catch (err) {
+        console.error('Fetch error:', err);
+      } finally {
+        if (silent) setIsRefreshing(false);
+        else setInitialLoading(false);
+      }
+    },
+    [activePatientNhs, apiFetch]
+  );
+
+  const startFallbackPolling = useCallback(() => {
+    if (!activePatientNhs || fallbackPollRef.current) return;
+    fallbackPollRef.current = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchMessages({ silent: true });
+    }, 5000);
+  }, [activePatientNhs, fetchMessages]);
+
+  const stopRealtimeChannel = useCallback(() => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    setRealtimeConnected(false);
+  }, []);
+
+  // Reset state + initial fetch on patient change
   useEffect(() => {
     setExpandedMsg(null);
     setShowCalendarMenu(false);
     setSearchQuery('');
     setSortOrder('desc');
-  }, [activePatientNhs]);
+    clearFallbackPoll();
+    stopRealtimeChannel();
+    fetchMessages({ silent: false });
+  }, [activePatientNhs, fetchMessages, stopRealtimeChannel]);
 
-  const fetchMessages = useCallback(() => {
-    if (!activePatientNhs) return Promise.resolve();
-    setLoading(true);
-    return apiFetch(`/api/messages?nhs_number=${encodeURIComponent(activePatientNhs)}`)
-      .then(data => setMessages(Array.isArray(data?.messages) ? data.messages : []))
-      .catch(err => {
-        console.error('Fetch error:', err);
-        setMessages([]);
-      })
-      .finally(() => setLoading(false));
-  }, [activePatientNhs, apiFetch]);
-
+  // Realtime subscription with fallback polling
   useEffect(() => {
-    if (!activePatientNhs) {
-      setMessages([]);
-      setLoading(false);
-      return;
-    }
+    if (!activePatientNhs) return;
 
-    let intervalId;
-    let cancelled = false;
+    const channel = supabase
+      .channel(`messages-${activePatientNhs}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'document_scans',
+          filter: `nhs_number=eq.${activePatientNhs}`,
+        },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
 
-    const tick = () => {
-      if (cancelled) return;
-      if (document.visibilityState !== 'visible') return;
-      fetchMessages();
-    };
+          if (eventType === 'INSERT') {
+            upsertMessage(newRow);
+          } else if (eventType === 'UPDATE') {
+            upsertMessage(newRow);
+          } else if (eventType === 'DELETE') {
+            removeMessage(oldRow?.id);
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConnected(true);
+          clearFallbackPoll();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeConnected(false);
+          startFallbackPolling();
+        }
+      });
 
-    tick(); // initial fetch
-    intervalId = setInterval(tick, 5000);
+    channelRef.current = channel;
 
     return () => {
-      cancelled = true;
-      clearInterval(intervalId);
+      stopRealtimeChannel();
+      clearFallbackPoll();
     };
-  }, [activePatientNhs, fetchMessages]);
+  }, [activePatientNhs, upsertMessage, removeMessage, startFallbackPolling, stopRealtimeChannel]);
 
   const displayedMessages = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+
     const result = [...messages].filter(msg => {
       if (!query) return true;
       const dateStr = formatDate(msg.created_at).toLowerCase();
@@ -255,13 +333,12 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
 
     try {
       await apiFetch(`/api/messages/${id}`, { method: 'DELETE' });
-      setMessages(prev => prev.filter(msg => msg.id !== id));
-      setExpandedMsg(prev => (prev?.id === id ? null : prev));
+      removeMessage(id);
     } catch (err) {
       console.error('Failed to delete message:', err);
       alert('Failed to delete. Please try again.');
     }
-  }, [apiFetch]);
+  }, [apiFetch, removeMessage]);
 
   const getEventDetails = useCallback((msg) => {
     const text = msg?.summary_text || '';
@@ -281,12 +358,7 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
     const startDate = parsedStart ?? new Date();
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 
-    return {
-      title: `NHS: ${clinician}`,
-      startDate,
-      endDate,
-      locationStr,
-    };
+    return { title: `NHS: ${clinician}`, startDate, endDate, locationStr };
   }, []);
 
   const handleAppleCalendar = useCallback((msg) => {
@@ -336,8 +408,7 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
 
   const renderEssentialOnly = useCallback((fullMarkdownText) => {
     if (!fullMarkdownText) return '';
-    const sections = fullMarkdownText.split(/\*\*Extra Information:\*\*/i);
-    return sections[0].trim();
+    return fullMarkdownText.split(/\*\*Extra Information:\*\*/i)[0].trim();
   }, []);
 
   const CustomLink = ({ href, children }) => (
@@ -361,11 +432,18 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
     </a>
   );
 
-  if (loading) return <p style={s.loading}>Loading messages…</p>;
+  if (initialLoading) return <p style={s.loading}>Loading messages…</p>;
 
   return (
     <div style={s.container}>
       <p style={s.sectionTitle}>Communications</p>
+
+      {messages.length > 0 && (
+        <p style={{ margin: '0 16px 8px', color: C.textLight, fontSize: '12px' }}>
+          {realtimeConnected ? 'Live' : 'Reconnecting… (fallback refresh active)'}
+          {isRefreshing ? ' • Refreshing…' : ''}
+        </p>
+      )}
 
       {expandedMsg && (
         <div style={s.fullScreenModal}>
@@ -373,16 +451,10 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
             <button style={s.backButton} onClick={() => setExpandedMsg(null)}>
               <span>←</span> Back
             </button>
-
             <span style={{ marginLeft: '16px', fontWeight: '600', color: C.textDark }}>
               {(expandedMsg.scan_type ?? 'scan').replace(/_/g, ' ')}
             </span>
-
-            <button
-              style={s.deleteButtonHeader}
-              onClick={() => handleDelete(expandedMsg.id)}
-              aria-label="Delete entry"
-            >
+            <button style={s.deleteButtonHeader} onClick={() => handleDelete(expandedMsg.id)} aria-label="Delete entry">
               🗑️
             </button>
           </div>
@@ -407,11 +479,7 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
                   </div>
                 </>
               )}
-
-              <button
-                style={{ ...s.calendarButton, marginTop: 0 }}
-                onClick={() => setShowCalendarMenu(v => !v)}
-              >
+              <button style={{ ...s.calendarButton, marginTop: 0 }} onClick={() => setShowCalendarMenu(v => !v)}>
                 <span style={{ fontSize: '20px' }}>📅</span> Add to Calendar
               </button>
             </div>
@@ -440,9 +508,7 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
 
       {messages.length === 0 ? (
         <p style={s.empty}>
-          {activePatientNhs
-            ? 'No communications yet for this patient. Scan a document to upload one.'
-            : 'No patient selected.'}
+          {activePatientNhs ? 'No communications yet for this patient. Scan a document to upload one.' : 'No patient selected.'}
         </p>
       ) : displayedMessages.length === 0 ? (
         <p style={s.empty}>
