@@ -142,7 +142,7 @@ If any details are missing, write "Not specified". Extract any instructions abou
 * **Location:** [Insert here]
 
 **Extra Information:**
-* **Directions/Map:** [Generate a Google Maps search link using the extracted location, formatted exactly like this: [View on Map](https://www.google.com/maps/search/?api=1&query=Insert+Location+Here)]
+* **Directions/Map:** [Generate a Google Maps search link using the extracted location, formatted exactly like this: [Directions to Hospital](https://www.google.com/maps/search/?api=1&query=Insert+Location+Here)]
 * **What to Bring:** [Insert items to bring here]
 * **Important Notes:** [Insert any other crucial instructions here]
 
