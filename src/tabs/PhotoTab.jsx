@@ -5,7 +5,8 @@ const s = {
   container: {
     position: 'relative',
     flex: 1,
-    minHeight: 'calc(100svh - 80px)',
+    height: '100%',
+    minHeight: 0,
     backgroundColor: '#000000',
     overflow: 'hidden',
     display: 'flex',
