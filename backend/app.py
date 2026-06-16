@@ -191,7 +191,7 @@ def _process_single_scan(scan):
             .update({
                 "scan_type": detected_type,  # keep canonical machine value
                 "summary_text": summary,
-                "summary_status": "completed"
+                "summary_status": "completed",
                 "nhs_number": scan.get("nhs_number")
             })\
             .eq("id", scan_id)\
