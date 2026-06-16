@@ -108,6 +108,8 @@ const s = {
   mainContent: {
     flex: 1,
     minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column'
   },
   mainContentScrollable: {
     overflowY: 'auto',
