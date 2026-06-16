@@ -195,16 +195,27 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
     }
   };
 
+  // UPDATED: JavaScript filtering for bulletproof Realtime
   const upsertMessage = useCallback((row) => {
     if (!row?.id) return;
+    
     setMessages(prev => {
       const idx = prev.findIndex(m => m.id === row.id);
-      if (idx === -1) return [row, ...prev];
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], ...row };
-      return copy;
+      
+      if (idx !== -1) {
+        // We already have this message. Just merge the new data (like the AI summary)
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], ...row };
+        return copy;
+      } else {
+        // Brand new message. Check if it belongs to the active patient.
+        if (String(row.nhs_number).trim() === String(activePatientNhs).trim()) {
+          return [row, ...prev];
+        }
+        return prev;
+      }
     });
-  }, []);
+  }, [activePatientNhs]);
 
   const removeMessage = useCallback((id) => {
     if (!id) return;
@@ -263,26 +274,25 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
     fetchMessages({ silent: false });
   }, [activePatientNhs, fetchMessages, stopRealtimeChannel]);
 
-  // Realtime subscription with fallback polling
+  // UPDATED: Realtime subscription with NO Postgres filter
   useEffect(() => {
     if (!activePatientNhs) return;
 
+    // We use a shared channel name so both Carer and Patient listen to the same pipe
     const channel = supabase
-      .channel(`messages-${activePatientNhs}-${Date.now()}`)
+      .channel('public-scans-channel')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'document_scans',
-          filter: `nhs_number=eq.${activePatientNhs}`,
+          table: 'document_scans'
+          // NO POSTGRES FILTER. We filter in JavaScript using upsertMessage.
         },
         (payload) => {
           const { eventType, new: newRow, old: oldRow } = payload;
 
-          if (eventType === 'INSERT') {
-            upsertMessage(newRow);
-          } else if (eventType === 'UPDATE') {
+          if (eventType === 'INSERT' || eventType === 'UPDATE') {
             upsertMessage(newRow);
           } else if (eventType === 'DELETE') {
             removeMessage(oldRow?.id);
