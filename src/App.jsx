@@ -29,7 +29,6 @@ export async function apiFetch(path, options = {}) {
     throw new Error(`${res.status} ${res.statusText}`);
   }
 
-  // Some DELETE endpoints may return empty body
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) return {};
   return res.json();
@@ -52,14 +51,7 @@ function IconHome({ filled, color }) {
 
 function IconCamera({ filled, color }) {
   return (
-    <svg
-      width="26"
-      height="26"
-      viewBox="0 0 24 24"
-      fill={filled ? color : 'none'}
-      stroke={color}
-      strokeWidth="1.8"
-    >
+    <svg width="26" height="26" viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="1.8">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8c0-1 1-2 2-2h4l2-3h6l2 3h4c1 0 2 1 2 2z" />
       <circle cx="12" cy="13" r="4" />
     </svg>
@@ -68,14 +60,7 @@ function IconCamera({ filled, color }) {
 
 function IconMail({ filled, color }) {
   return (
-    <svg
-      width="26"
-      height="26"
-      viewBox="0 0 24 24"
-      fill={filled ? color : 'none'}
-      stroke={color}
-      strokeWidth="1.8"
-    >
+    <svg width="26" height="26" viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth="1.8">
       <rect x="2" y="4" width="20" height="16" rx="2" />
       <polyline points="2,4 12,13 22,4" />
     </svg>
@@ -84,77 +69,37 @@ function IconMail({ filled, color }) {
 
 const s = {
   shell: {
-    width: '100%',
-    maxWidth: '430px',
-    minHeight: '100svh',
-    margin: '0 auto',
-    backgroundColor: C.bg,
-    display: 'flex',
-    flexDirection: 'column',
-    boxShadow: '0 0 40px rgba(0,0,0,.18)',
-    position: 'relative',
+    width: '100%', maxWidth: '430px', minHeight: '100svh', margin: '0 auto',
+    backgroundColor: C.bg, display: 'flex', flexDirection: 'column',
+    boxShadow: '0 0 40px rgba(0,0,0,.18)', position: 'relative',
   },
-
   topBar: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    padding: '10px 12px 6px',
-    backgroundColor: C.white,
-    borderBottom: `1px solid ${C.border}`,
-    zIndex: 5,
+    display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+    padding: '10px 12px 6px', backgroundColor: C.white, borderBottom: `1px solid ${C.border}`, zIndex: 5,
   },
-
   mainContent: {
-    flex: 1,
-    minHeight: 0,
-    display: 'flex',
-    flexDirection: 'column'
+    flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column'
   },
   mainContentScrollable: {
-    overflowY: 'auto',
-    paddingBottom: '80px',
+    overflowY: 'auto', paddingBottom: '80px',
   },
   mainContentPhoto: {
-    overflow: 'hidden',
-    paddingBottom: 0,
+    overflow: 'hidden', paddingBottom: 0,
   },
-
   navBar: {
-    position: 'sticky',
-    bottom: 0,
-    backgroundColor: C.white,
-    display: 'flex',
-    borderTop: `1px solid ${C.border}`,
-    paddingBottom: '20px',
-    paddingTop: '8px',
+    position: 'sticky', bottom: 0, backgroundColor: C.white, display: 'flex',
+    borderTop: `1px solid ${C.border}`, paddingBottom: '20px', paddingTop: '8px',
   },
-
   navItem: {
-    flex: 1,
-    border: 'none',
-    background: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    cursor: 'pointer',
+    flex: 1, border: 'none', background: 'none', display: 'flex',
+    flexDirection: 'column', alignItems: 'center', cursor: 'pointer',
   },
-
   loading: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    color: C.primary,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    height: '100vh', color: C.primary,
   },
-
   logoutBtn: {
-    border: 'none',
-    background: 'none',
-    color: C.primary,
-    fontWeight: '600',
-    cursor: 'pointer',
-    padding: '6px 8px',
+    border: 'none', background: 'none', color: C.primary, fontWeight: '600', cursor: 'pointer', padding: '6px 8px',
   },
 };
 
@@ -204,18 +149,14 @@ function MainApp() {
     if (data.role === 'carer') {
       const list = data.managed_patients ?? [];
       setManagedPatients(list);
-
       const firstNhs = list[0]?.nhs_number ?? '';
       setSelectedPatientNhs(firstNhs);
-
-      // clear until selected patient fetch populates
       setAppointments([]);
       setPrescriptions([]);
       setPatient(null);
       return;
     }
 
-    // fallback for unknown role
     setPatient(null);
     setManagedPatients([]);
     setSelectedPatientNhs('');
@@ -223,10 +164,8 @@ function MainApp() {
     setPrescriptions([]);
   }, []);
 
-  // Initial bootstrap
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         setLoading(true);
@@ -237,13 +176,9 @@ function MainApp() {
         if (!cancelled) setLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [loadOwnPatientData]);
 
-  // Load selected patient's clinical data for carers
   useEffect(() => {
     if (role !== 'carer') return;
     if (!selectedPatientNhs) {
@@ -253,74 +188,33 @@ function MainApp() {
     }
 
     let cancelled = false;
-
     (async () => {
       try {
-        // Preferred endpoint: patient overview by NHS number
-        const data = await apiFetch(
-          `/api/patient-overview?nhs_number=${encodeURIComponent(selectedPatientNhs)}`
-        );
-
+        const data = await apiFetch(`/api/patient-overview?nhs_number=${encodeURIComponent(selectedPatientNhs)}`);
         if (cancelled) return;
         setAppointments(data.appointments ?? []);
         setPrescriptions(data.prescriptions ?? []);
       } catch (err) {
         console.warn('Could not load /api/patient-overview, using safe fallback:', err);
-
-        // Optional fallback pattern if your backend uses different endpoints
-        // Keep empty instead of stale data
         if (!cancelled) {
           setAppointments([]);
           setPrescriptions([]);
         }
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [role, selectedPatientNhs]);
 
   const handleLogEvent = useCallback(async (eventType, metadata) => {
     try {
       await apiFetch('/api/event', {
         method: 'POST',
-        body: JSON.stringify({
-          event_type: eventType,
-          metadata,
-        }),
+        body: JSON.stringify({ event_type: eventType, metadata }),
       });
     } catch (e) {
       console.warn('logEvent failed:', e);
     }
   }, []);
-
-  const tabContent = {
-    home: (
-      <HomeTab
-        patient={currentPatient}
-        appointments={appointments}
-        prescriptions={prescriptions}
-        onNavigate={setActiveTab}
-        logEvent={handleLogEvent}
-      />
-    ),
-
-    photo: (
-      <PhotoTab
-        patient={currentPatient}
-        apiFetch={apiFetch}
-        onNavigate={setActiveTab}
-      />
-    ),
-
-    messages: (
-      <MessagesTab
-        apiFetch={apiFetch}
-        activePatientNhs={currentPatient?.nhs_number}
-      />
-    ),
-  };
 
   if (loading) {
     return <p style={s.loading}>Connecting securely…</p>;
@@ -360,7 +254,43 @@ function MainApp() {
           ...(activeTab === 'photo' ? s.mainContentPhoto : s.mainContentScrollable),
         }}
       >
-        {tabContent[activeTab]}
+        {activeTab === 'home' && (
+          <HomeTab
+            patient={currentPatient}
+            appointments={appointments}
+            prescriptions={prescriptions}
+            onNavigate={setActiveTab}
+            logEvent={handleLogEvent}
+          />
+        )}
+
+        {/* The camera unmounts completely when hidden to release the hardware */}
+        {activeTab === 'photo' && (
+          <PhotoTab
+            patient={currentPatient}
+            apiFetch={apiFetch}
+            onNavigate={setActiveTab}
+          />
+        )}
+
+        {/* CRITICAL FIX: Keep-Alive 
+          MessagesTab is ALWAYS mounted, just visually hidden when not in use.
+          This prevents the initial loading screen and allows the Realtime 
+          websocket to catch your new uploads instantly in the background!
+        */}
+        <div 
+          style={{ 
+            display: activeTab === 'messages' ? 'flex' : 'none',
+            flex: 1,
+            flexDirection: 'column',
+            minHeight: 0
+          }}
+        >
+          <MessagesTab
+            apiFetch={apiFetch}
+            activePatientNhs={currentPatient?.nhs_number}
+          />
+        </div>
       </main>
 
       <nav style={s.navBar}>
@@ -369,12 +299,7 @@ function MainApp() {
           return (
             <button key={id} style={s.navItem} onClick={() => setActiveTab(id)}>
               <Icon filled={active} color={active ? C.primary : C.textLight} />
-              <span
-                style={{
-                  fontSize: '11px',
-                  color: active ? C.primary : C.textLight,
-                }}
-              >
+              <span style={{ fontSize: '11px', color: active ? C.primary : C.textLight }}>
                 {label}
               </span>
             </button>
@@ -400,9 +325,7 @@ export default function App() {
       setChecking(false);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => setSession(session));
 
     return () => {
       mounted = false;
@@ -410,10 +333,7 @@ export default function App() {
     };
   }, []);
 
-  if (checking) {
-    return <p style={s.loading}>Securing connection…</p>;
-  }
-
+  if (checking) return <p style={s.loading}>Securing connection…</p>;
   if (!session) return <LoginScreen />;
 
   return <MainApp />;
