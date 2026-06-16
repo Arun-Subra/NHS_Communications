@@ -290,7 +290,7 @@ export default function PhotoTab({ patient, apiFetch, onNavigate }) {
         body: JSON.stringify({
           nhs_number: patient.nhs_number,
           image_data: imageDataUrl,
-          scan_type: 'auto_detect',
+          scan_type: 'processing_document',
         }),
         signal: uploadAbortRef.current.signal,
       });

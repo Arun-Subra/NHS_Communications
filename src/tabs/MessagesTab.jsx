@@ -541,7 +541,9 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
                 </div>
               ) : (
                 <div style={s.itemPreviewCollapsed}>
-                  <p style={{ margin: 0 }}>Processing…</p>
+                  <p style={{ margin: 0, fontStyle: 'italic', color: C.textLight }}>
+                    Summary will be available shortly...
+                  </p>
                 </div>
               )}
             </div>
