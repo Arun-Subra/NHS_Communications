@@ -192,6 +192,7 @@ def _process_single_scan(scan):
                 "scan_type": detected_type,  # keep canonical machine value
                 "summary_text": summary,
                 "summary_status": "completed"
+                "nhs_number": scan.get("nhs_number")
             })\
             .eq("id", scan_id)\
             .execute()
@@ -350,7 +351,10 @@ def log_scan(user):
         if existing.data:
             existing_id = existing.data[0]["id"]
             supabase.table(TABLE_SCANS)\
-                .update({"created_at": datetime.now(timezone.utc).isoformat()})\
+                .update({
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "nhs_number": target_nhs  # <--- FORCE INCLUSION FOR REALTIME FILTER
+                })\
                 .eq("id", existing_id)\
                 .execute()
             return jsonify({"status": "ok", "message": "Scan already exists; timestamp updated."})

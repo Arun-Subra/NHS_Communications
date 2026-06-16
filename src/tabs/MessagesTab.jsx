@@ -280,7 +280,7 @@ export default function MessagesTab({ activePatientNhs, apiFetch }) {
 
     // We use a shared channel name so both Carer and Patient listen to the same pipe
     const channel = supabase
-      .channel('public-scans-channel')
+      .channel(`messages-${activePatientNhs}`)
       .on(
         'postgres_changes',
         {
