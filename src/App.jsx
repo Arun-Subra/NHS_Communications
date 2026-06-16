@@ -95,6 +95,16 @@ const s = {
     position: 'relative',
   },
 
+  topBar: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: '10px 12px 6px',
+    backgroundColor: C.white,
+    borderBottom: `1px solid ${C.border}`,
+    zIndex: 5,
+  },
+
   mainContent: {
     flex: 1,
     overflowY: 'auto',
@@ -130,14 +140,12 @@ const s = {
   },
 
   logoutBtn: {
-    position: 'absolute',
-    right: '15px',
-    top: '12px',
-    zIndex: 20,
     border: 'none',
     background: 'none',
     color: C.primary,
     fontWeight: '600',
+    cursor: 'pointer',
+    padding: '6px 8px',
   },
 };
 
@@ -311,9 +319,11 @@ function MainApp() {
 
   return (
     <div style={s.shell}>
-      <button style={s.logoutBtn} onClick={logout}>
-        Log out
-      </button>
+      <div style={s.topBar}>
+        <button style={s.logoutBtn} onClick={logout}>
+          Log out
+        </button>
+      </div>
 
       {role === 'carer' && (
         <div style={{ padding: '12px', background: C.white }}>
