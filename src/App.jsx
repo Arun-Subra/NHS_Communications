@@ -107,8 +107,15 @@ const s = {
 
   mainContent: {
     flex: 1,
+    minHeight: 0,
+  },
+  mainContentScrollable: {
     overflowY: 'auto',
     paddingBottom: '80px',
+  },
+  mainContentPhoto: {
+    overflow: 'hidden',
+    paddingBottom: 0,
   },
 
   navBar: {
@@ -345,7 +352,14 @@ function MainApp() {
         </div>
       )}
 
-      <main style={s.mainContent}>{tabContent[activeTab]}</main>
+      <main
+        style={{
+          ...s.mainContent,
+          ...(activeTab === 'photo' ? s.mainContentPhoto : s.mainContentScrollable),
+        }}
+      >
+        {tabContent[activeTab]}
+      </main>
 
       <nav style={s.navBar}>
         {TABS.map(({ id, label, Icon }) => {
