@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { C } from './styles/shared.js';
 
 import HomeTab from './tabs/HomeTab.jsx';
@@ -114,6 +114,16 @@ const TABS = [
 function MainApp() {
   const [activeTab, setActiveTab] = useState('photo');
   const [loading, setLoading] = useState(true);
+
+  // 1. Create a reference to the main scroll container
+  const mainRef = useRef(null);
+
+  // 2. Automatically scroll to the top whenever the activeTab changes
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
 
   const [role, setRole] = useState(null);
 
@@ -249,6 +259,7 @@ function MainApp() {
       )}
 
       <main
+        ref={mainRef}
         style={{
           ...s.mainContent,
           ...(activeTab === 'photo' ? s.mainContentPhoto : s.mainContentScrollable),
